@@ -1,8 +1,8 @@
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
 };
 use crate::core::models::FileState;
@@ -23,14 +23,32 @@ pub fn render_status(state: &AppState, f: &mut Frame, area: Rect) {
     let inner_area = inner.inner(area);
     f.render_widget(inner, area);
 
-    let all_files = state.all_files();
-
-    if all_files.is_empty() && !state.is_loading {
-        let msg = Paragraph::new("  Sin cambios en el repositorio")
-            .style(theme.text_dim());
-        f.render_widget(msg, inner_area);
+    if state.is_loading {
+        render_skeleton(state, f, inner_area, &theme);
         return;
     }
+
+    let all_files: Vec<&crate::core::models::FileEntry> = if state.show_search && !state.search_query.is_empty() {
+        let q = state.search_query.to_lowercase();
+        state.all_files().into_iter().filter(|f| {
+            f.path.to_lowercase().contains(&q)
+                || f.old_path.as_ref().map_or(false, |o| o.to_lowercase().contains(&q))
+        }).collect()
+    } else {
+        state.all_files()
+    };
+
+    if all_files.is_empty() {
+        let msg = if state.show_search && !state.search_query.is_empty() {
+            format!("  Sin resultados para \"{}\"", state.search_query)
+        } else {
+            String::from("  Sin cambios en el repositorio")
+        };
+        f.render_widget(Paragraph::new(msg).style(theme.text_dim()), inner_area);
+        return;
+    }
+
+    let visual_map = state.visual_map_for(&all_files);
 
     let header_height = if state.branch.is_some() { 3 } else { 1 };
     let content_height = inner_area.height.saturating_sub(header_height).max(1) as usize;
@@ -44,8 +62,47 @@ pub fn render_status(state: &AppState, f: &mut Frame, area: Rect) {
         .split(inner_area);
 
     render_branch_header(state, f, chunks[0], &theme);
+    render_file_list(state, &all_files, &visual_map, f, chunks[1], content_height);
+}
 
-    render_file_list(state, &all_files, f, chunks[1], content_height);
+fn render_skeleton(state: &AppState, f: &mut Frame, area: Rect, theme: &crate::ui::theme::Theme) {
+    let msg = format!("  {} ...", state.loading_message);
+    f.render_widget(Paragraph::new(msg).style(theme.text_dim()), area);
+}
+
+pub fn render_search_bar(state: &AppState, f: &mut Frame, area: Rect) {
+    let theme = crate::ui::theme::Theme::from_hex_strings(&state.config.theme);
+
+    let popup_area = Rect {
+        x: area.width.saturating_sub(42) / 2,
+        y: 2,
+        width: 42,
+        height: 3,
+    };
+
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border_active())
+        .style(Style::default().bg(theme.surface));
+
+    f.render_widget(block, popup_area);
+
+    let prompt = format!("/{}", state.search_query);
+    let inner = Rect {
+        x: popup_area.x + 2,
+        y: popup_area.y + 1,
+        width: popup_area.width.saturating_sub(4),
+        height: 1,
+    };
+    f.render_widget(
+        Paragraph::new(Span::styled(prompt, Style::default().fg(theme.accent_primary))),
+        inner,
+    );
+
+    f.set_cursor_position((inner.x + state.search_query.len() as u16 + 1, inner.y));
 }
 
 fn render_branch_header(
@@ -98,46 +155,58 @@ fn render_branch_header(
 fn render_file_list(
     state: &AppState,
     all_files: &[&crate::core::models::FileEntry],
+    visual_map: &[Option<usize>],
     f: &mut Frame,
     area: Rect,
     content_height: usize,
 ) {
     let theme = crate::ui::theme::Theme::from_hex_strings(&state.config.theme);
 
-    let total = all_files.len();
-    if total == 0 {
+    let total_visual = visual_map.len();
+    if total_visual == 0 {
         return;
     }
 
-    let max_offset = total.saturating_sub(content_height);
-    let offset = state.scroll_offset.min(max_offset);
-    let visible_end = (offset + content_height).min(total);
+    let start = state.scroll_offset.min(total_visual.saturating_sub(1));
+    let end = (start + content_height).min(total_visual);
+
+    let flash_set: std::collections::HashSet<&str> = state
+        .flash_files
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .collect();
 
     let mut lines: Vec<Line> = Vec::new();
     let mut last_section: Option<&str> = None;
 
-    for i in offset..visible_end {
-        let file = all_files[i];
-        let section = section_name(&file.state);
+    for v in start..end {
+        match visual_map[v] {
+            Some(file_idx) => {
+                let file = all_files[file_idx];
+                let section = section_name(&file.state);
+                if last_section != Some(section) {
+                    if !lines.is_empty() {
+                        lines.push(Line::from(""));
+                    }
+                    let header = section_header(section, &theme);
+                    lines.push(header);
+                    last_section = Some(section);
+                }
 
-        if last_section != Some(section) {
-            if !lines.is_empty() {
-                lines.push(Line::from(""));
+                let is_selected = file_idx == state.selected_index;
+                let is_flashing = flash_set.contains(file.path.as_str());
+                lines.push(file_line(file, is_selected, is_flashing, &theme));
             }
-            let header = section_header(section, &theme);
-            lines.push(header);
-            last_section = Some(section);
+            None => {}
         }
-
-        let is_selected = i == state.selected_index;
-        lines.push(file_line(file, is_selected, &theme));
     }
 
     let paragraph = Paragraph::new(lines);
     f.render_widget(paragraph, area);
 }
 
-fn section_name(state: &FileState) -> &'static str {
+
+const fn section_name(state: &FileState) -> &'static str {
     match state {
         FileState::Staged => "Cambios Staged",
         FileState::Unstaged => "Cambios sin Stagear",
@@ -155,27 +224,33 @@ fn section_header(section: &str, theme: &crate::ui::theme::Theme) -> Line<'stati
     };
     Line::from(Span::styled(
         format!("  {}", section),
-        Style::default().fg(color),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
     ))
 }
 
 fn file_line(
     file: &crate::core::models::FileEntry,
     selected: bool,
+    flashing: bool,
     theme: &crate::ui::theme::Theme,
 ) -> Line<'static> {
     let icon = status_icon(&file.state);
+    let display_path = match &file.old_path {
+        Some(old) => format!("{} -> {}", old, file.path),
+        None => file.path.clone(),
+    };
     let file_icon = extension_icon(&file.path);
-    let text = format!("    {} {} {}", icon, file_icon, file.path);
+    let text = format!("    {} {} {}", icon, file_icon, display_path);
 
-    if selected {
-        Line::from(Span::styled(text, theme.selected_style()))
+    let style = if selected {
+        theme.selected_style()
+    } else if flashing {
+        Style::default().bg(theme.success).add_modifier(Modifier::BOLD)
     } else {
-        Line::from(Span::styled(
-            text,
-            file_state_style(&file.state, theme),
-        ))
-    }
+        file_state_style(&file.state, theme)
+    };
+
+    Line::from(Span::styled(text, style))
 }
 
 fn file_state_style(state: &FileState, theme: &crate::ui::theme::Theme) -> Style {
@@ -184,7 +259,7 @@ fn file_state_style(state: &FileState, theme: &crate::ui::theme::Theme) -> Style
         FileState::Unstaged => Style::default().fg(theme.muted),
         FileState::Untracked => Style::default().fg(theme.accent_primary),
         FileState::Renamed => Style::default().fg(theme.danger),
-        FileState::Conflicted => Style::default().fg(theme.danger).add_modifier(ratatui::style::Modifier::BOLD),
+        FileState::Conflicted => Style::default().fg(theme.danger).add_modifier(Modifier::BOLD),
     }
 }
 

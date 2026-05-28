@@ -24,6 +24,9 @@ impl Default for ThemeConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Keybindings {
+    pub up: String,
+    pub down: String,
+    pub toggle_stage: String,
     pub stage: String,
     pub unstage: String,
     pub commit: String,
@@ -32,12 +35,18 @@ pub struct Keybindings {
     pub log_view: String,
     pub diff_view: String,
     pub command_palette: String,
+    pub search: String,
+    pub help: String,
+    pub back: String,
     pub quit: String,
 }
 
 impl Default for Keybindings {
     fn default() -> Self {
         Self {
+            up: String::from("k"),
+            down: String::from("j"),
+            toggle_stage: String::from(" "),
             stage: String::from("s"),
             unstage: String::from("u"),
             commit: String::from("c"),
@@ -46,6 +55,9 @@ impl Default for Keybindings {
             log_view: String::from("l"),
             diff_view: String::from("<Enter>"),
             command_palette: String::from(":"),
+            search: String::from("\\"),
+            help: String::from("?"),
+            back: String::from("<Esc>"),
             quit: String::from("q"),
         }
     }

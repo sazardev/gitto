@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
@@ -27,9 +27,10 @@ pub fn render_diff(state: &AppState, f: &mut Frame, area: Rect) {
     let content = state.diff_content.as_deref().unwrap_or("");
 
     if content.is_empty() {
-        let msg = Paragraph::new("Sin cambios en este archivo")
-            .style(theme.text_dim());
-        f.render_widget(msg, inner_area);
+        f.render_widget(
+            Paragraph::new("Sin cambios en este archivo").style(theme.text_dim()),
+            inner_area,
+        );
         return;
     }
 
@@ -41,7 +42,7 @@ pub fn render_diff(state: &AppState, f: &mut Frame, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
     for (i, line_str) in content.lines().enumerate() {
-        if i < offset || i >= offset + visible_rows {
+        if i < offset || i >= offset.saturating_add(visible_rows) {
             continue;
         }
 
@@ -49,20 +50,26 @@ pub fn render_diff(state: &AppState, f: &mut Frame, area: Rect) {
         let num_str = format!("{:>4} ", line_num);
         let num_span = Span::styled(num_str, Style::default().fg(theme.muted));
 
-        let (color, text) = if line_str.starts_with('+') {
-            (theme.success, line_str)
+        let highlighted = i == offset.saturating_add(visible_rows / 2);
+
+        let (color, add_mod) = if line_str.starts_with('+') {
+            (theme.success, Modifier::BOLD)
         } else if line_str.starts_with('-') {
-            (theme.danger, line_str)
+            (theme.danger, Modifier::BOLD)
         } else if line_str.starts_with('@') && line_str.contains("@@") {
-            (theme.accent_primary, line_str)
+            (theme.accent_primary, Modifier::empty())
         } else {
-            (theme.muted, line_str)
+            (theme.muted, Modifier::empty())
         };
 
-        let content_span = Span::styled(text, Style::default().fg(color));
+        let mut content_style = Style::default().fg(color).add_modifier(add_mod);
+        if highlighted {
+            content_style = content_style.bg(theme.accent_primary).fg(ratatui::style::Color::Black);
+        }
+
+        let content_span = Span::styled(line_str, content_style);
         lines.push(Line::from(vec![num_span, content_span]));
     }
 
-    let paragraph = Paragraph::new(lines);
-    f.render_widget(paragraph, inner_area);
+    f.render_widget(Paragraph::new(lines), inner_area);
 }

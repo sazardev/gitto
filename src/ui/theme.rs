@@ -24,10 +24,6 @@ impl Theme {
         }
     }
 
-    pub fn bg_style(&self) -> Style {
-        Style::default().bg(self.bg_base)
-    }
-
     pub fn text_dim(&self) -> Style {
         Style::default().fg(self.muted)
     }
@@ -37,10 +33,6 @@ impl Theme {
     }
 
     pub fn accent(&self) -> Style {
-        Style::default().fg(self.accent_primary)
-    }
-
-    pub fn heading_style(&self) -> Style {
         Style::default().fg(self.accent_primary)
     }
 

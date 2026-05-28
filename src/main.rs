@@ -3,11 +3,11 @@ mod core;
 mod ports;
 mod ui;
 
-use anyhow::Result;
 use ports::config_provider::ConfigProvider;
 use ports::git_provider::GitProvider;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let config = adapters::fs_config::FsConfig::load()?;
     let state = core::state::AppState::new(config);
 
@@ -16,7 +16,6 @@ fn main() -> Result<()> {
         .unwrap_or_else(|_| String::from("."));
 
     let repo_path = adapters::git2_adapter::Git2Adapter::discover(&cwd)?;
-
     let git = adapters::git2_adapter::Git2Adapter::new(&repo_path)?;
 
     crossterm::terminal::enable_raw_mode()?;
@@ -30,8 +29,10 @@ fn main() -> Result<()> {
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = ratatui::Terminal::new(backend)?;
 
-    let mut app = ui::app::App::new(state);
-    let result = app.run(&mut terminal, &git);
+    let result = {
+        let mut app = ui::app::App::new(state, repo_path);
+        app.run(&mut terminal, &git)
+    };
 
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
@@ -39,10 +40,6 @@ fn main() -> Result<()> {
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::cursor::Show
     )?;
-
-    if let Err(ref e) = result {
-        eprintln!("Error: {}", e);
-    }
 
     result
 }

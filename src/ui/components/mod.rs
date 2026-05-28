@@ -2,6 +2,7 @@ pub mod command_palette;
 pub mod commit_view;
 pub mod diff_view;
 pub mod footer;
+pub mod help;
 pub mod log_view;
 pub mod spinner;
 pub mod status_view;

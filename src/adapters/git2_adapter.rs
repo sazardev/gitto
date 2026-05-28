@@ -48,10 +48,22 @@ impl GitProvider for Git2Adapter {
                 FileState::Unstaged
             };
 
+            let old_path = if status.is_wt_renamed() {
+                entry.index_to_workdir()
+                    .and_then(|d| d.old_file().path())
+                    .map(|p| p.to_string_lossy().to_string())
+            } else if status.is_index_renamed() {
+                entry.head_to_index()
+                    .and_then(|d| d.old_file().path())
+                    .map(|p| p.to_string_lossy().to_string())
+            } else {
+                None
+            };
+
             files.push(FileEntry {
                 path,
                 state,
-                old_path: None,
+                old_path,
             });
         }
 
@@ -231,8 +243,6 @@ impl GitProvider for Git2Adapter {
         let name = head.shorthand()
             .unwrap_or("HEAD")
             .to_string();
-        let is_head = true;
-
         let upstream = self.repo.branch_upstream_name(&name)
             .ok()
             .and_then(|n| n.as_str().map(String::from));
@@ -256,7 +266,6 @@ impl GitProvider for Git2Adapter {
 
         Ok(Branch {
             name,
-            is_head,
             upstream,
             ahead,
             behind,

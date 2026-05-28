@@ -9,18 +9,6 @@ pub enum FileState {
     Conflicted,
 }
 
-impl FileState {
-    pub fn icon(&self) -> &'static str {
-        match self {
-            FileState::Unstaged => "M",
-            FileState::Staged => "S",
-            FileState::Untracked => "?",
-            FileState::Renamed => "R",
-            FileState::Conflicted => "!",
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct FileEntry {
     pub path: String,
@@ -39,7 +27,6 @@ pub struct Commit {
 #[derive(Debug, Clone)]
 pub struct Branch {
     pub name: String,
-    pub is_head: bool,
     pub upstream: Option<String>,
     pub ahead: usize,
     pub behind: usize,

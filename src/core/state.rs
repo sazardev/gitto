@@ -1,6 +1,9 @@
 use std::time::Instant;
 use crate::ports::config_provider::AppConfig;
-use super::models::*;
+use super::models::FileEntry;
+use super::models::FileState;
+use super::models::Commit;
+use super::models::Branch;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum View {
@@ -38,10 +41,14 @@ pub struct AppState {
     pub show_commit_input: bool,
     pub commit_message: String,
     pub toast: Option<ToastMessage>,
+    pub show_help: bool,
     pub is_loading: bool,
     pub loading_message: String,
     pub config: AppConfig,
     pub should_quit: bool,
+    pub show_search: bool,
+    pub search_query: String,
+    pub flash_files: Vec<(String, Instant)>,
 }
 
 impl AppState {
@@ -61,10 +68,14 @@ impl AppState {
             show_commit_input: false,
             commit_message: String::new(),
             toast: None,
+            show_help: false,
             is_loading: true,
             loading_message: String::from("Cargando repositorio..."),
             config,
             should_quit: false,
+            show_search: false,
+            search_query: String::new(),
+            flash_files: Vec::new(),
         }
     }
 
@@ -106,16 +117,63 @@ impl AppState {
         self.clamp_scroll(visible_rows);
     }
 
-    pub fn clamp_scroll(&mut self, visible_rows: usize) {
-        let max_offset = self.item_count().saturating_sub(visible_rows);
-        if self.selected_index < self.scroll_offset {
-            self.scroll_offset = self.selected_index;
-        } else if self.selected_index >= self.scroll_offset.saturating_add(visible_rows) {
-            self.scroll_offset = self.selected_index.saturating_sub(visible_rows.saturating_sub(1));
+    pub fn visual_map_for(&self, files: &[&FileEntry]) -> Vec<Option<usize>> {
+        let mut map = Vec::new();
+        let mut last_section: Option<&str> = None;
+
+        for (i, file) in files.iter().enumerate() {
+            let section = section_name(file);
+            if last_section != Some(section) {
+                if last_section.is_some() {
+                    map.push(None);
+                }
+                map.push(None);
+                last_section = Some(section);
+            }
+            map.push(Some(i));
         }
+        map
+    }
+
+    pub fn visual_map(&self) -> Vec<Option<usize>> {
+        let files = self.all_files();
+        self.visual_map_for(&files)
+    }
+
+    pub fn visual_index(&self) -> usize {
+        let map = self.visual_map();
+        for (visual, item) in map.iter().enumerate() {
+            if *item == Some(self.selected_index) {
+                return visual;
+            }
+        }
+        0
+    }
+
+    pub fn clamp_scroll(&mut self, visible_rows: usize) {
+        let map = self.visual_map();
+        let visual_count = map.len();
+        if visual_count == 0 {
+            return;
+        }
+
+        let visual_idx = self.visual_index();
+        let visual_max = visual_count.saturating_sub(1);
+        let max_offset = visual_max.saturating_sub(visible_rows.saturating_sub(1));
+
+        if visual_idx < self.scroll_offset {
+            self.scroll_offset = visual_idx;
+        } else if visual_idx >= self.scroll_offset.saturating_add(visible_rows) {
+            self.scroll_offset = visual_idx.saturating_sub(visible_rows.saturating_sub(1));
+        }
+
         if self.scroll_offset > max_offset {
             self.scroll_offset = max_offset;
         }
+    }
+
+    pub fn visual_count(&self) -> usize {
+        self.visual_map().len()
     }
 
     pub fn item_count(&self) -> usize {
@@ -138,5 +196,15 @@ impl AppState {
             text: text.into(),
             created_at: Instant::now(),
         });
+    }
+}
+
+fn section_name(file: &FileEntry) -> &'static str {
+    match file.state {
+        FileState::Staged => "Cambios Staged",
+        FileState::Unstaged => "Cambios sin Stagear",
+        FileState::Untracked => "Sin Seguimiento",
+        FileState::Renamed => "Renombrados",
+        FileState::Conflicted => "Conflictos",
     }
 }
