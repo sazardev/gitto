@@ -1,0 +1,9 @@
+# OpenCode ignore
+target/
+.git/
+Cargo.lock
+# Excluir el directorio de compilación de Cargo
+/target/
+
+# Excluir archivos de respaldo
+**/*.rs.bk
