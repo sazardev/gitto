@@ -475,7 +475,7 @@ impl App {
             return Ok(());
         }
 
-        if keybind::matches_binding(&key, &kb.diff_view) || key.code == KeyCode::Enter {
+        if keybind::matches_binding(&key, &kb.diff_view) || key.code == KeyCode::Enter || key.code == KeyCode::Char('l') {
             if let Some(commit) = self.state.selected_commit() {
                 self.state.diff_content = Some(format!(
                     "commit {}\nAuthor: {}\n\n{}",
@@ -489,6 +489,7 @@ impl App {
 
         if keybind::matches_binding(&key, &kb.back)
             || key.code == KeyCode::Esc
+            || key.code == KeyCode::Char('h')
         {
             self.state.view = View::Status;
             self.state.selected_index = 0;
@@ -514,6 +515,7 @@ impl App {
 
         if keybind::matches_binding(&key, &kb.back)
             || key.code == KeyCode::Esc
+            || key.code == KeyCode::Char('h')
             || keybind::matches_binding(&key, &kb.quit)
         {
             self.state.view = View::Status;
