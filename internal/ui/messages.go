@@ -31,3 +31,11 @@ type LogLoaded struct {
 type LogError struct {
 	Err error
 }
+
+type DashboardLoaded struct {
+	Dashboard entities.Dashboard
+}
+
+type DashboardError struct {
+	Err error
+}

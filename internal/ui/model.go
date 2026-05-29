@@ -67,8 +67,7 @@ func NewMainModel(git ports.GitProvider, config ports.ConfigProvider) MainModel 
 
 func (m MainModel) Init() tea.Cmd {
 	return tea.Batch(
-		m.loadStatus(),
-		m.loadBranch(),
+		m.loadDashboard(),
 	)
 }
 
@@ -85,7 +84,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.CommitView.Hide()
 		m.Loading = false
 		m.LastMessage = "Commit successful"
-		return m, m.loadStatus()
+		return m, m.loadDashboard()
 	case CommitError:
 		m.Err = msg.Err
 		m.Loading = false
@@ -94,7 +93,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PushSuccess:
 		m.Loading = false
 		m.LastMessage = "Push successful"
-		return m, m.loadStatus()
+		return m, m.loadDashboard()
 	case PushError:
 		m.Err = msg.Err
 		m.Loading = false
@@ -103,7 +102,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PullSuccess:
 		m.Loading = false
 		m.LastMessage = "Pull successful"
-		return m, m.loadStatus()
+		return m, m.loadDashboard()
 	case PullError:
 		m.Err = msg.Err
 		m.Loading = false
@@ -119,6 +118,16 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case LogError:
 		m.Err = msg.Err
 		m.LastMessage = "Failed to load log: " + msg.Err.Error()
+		return m, nil
+	case DashboardLoaded:
+		m.StatusView = m.StatusView.Update(msg.Dashboard.Files)
+		m.StatusView = m.StatusView.UpdateBranches(msg.Dashboard.Branches)
+		m.StatusView = m.StatusView.UpdateCommits(msg.Dashboard.Commits)
+		m.CurrentBranch = msg.Dashboard.CurrentBranch
+		return m, nil
+	case DashboardError:
+		m.Err = msg.Err
+		m.LastMessage = "Failed to load dashboard: " + msg.Err.Error()
 		return m, nil
 	}
 	return m, nil
@@ -166,7 +175,7 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "r":
 			m.ViewMode = StatusViewMode
-			return m, m.loadStatus()
+			return m, m.loadDashboard()
 		case "l":
 			m.ViewMode = LogViewMode
 			return m, m.loadLog()
@@ -252,7 +261,7 @@ func (m MainModel) loadStatus() tea.Cmd {
 			return err
 		}
 		m.Files = files
-		m.StatusView.Update(files)
+		m.StatusView = m.StatusView.Update(files)
 		return nil
 	}
 }
@@ -278,6 +287,48 @@ func (m MainModel) loadLog() tea.Cmd {
 	}
 }
 
+func (m MainModel) loadDashboard() tea.Cmd {
+	return func() tea.Msg {
+		dashboard := entities.NewDashboard()
+
+		branch, err := m.Git.GetCurrentBranch()
+		if err != nil {
+			return DashboardError{Err: err}
+		}
+		dashboard.CurrentBranch = branch
+
+		branches, err := m.Git.GetBranches()
+		if err != nil {
+			return DashboardError{Err: err}
+		}
+		dashboard.Branches = branches
+
+		commits, err := m.Git.GetLog(m.Config.GetMaxLogItems())
+		if err != nil {
+			return DashboardError{Err: err}
+		}
+		dashboard.Commits = commits
+
+		files, err := m.Git.GetStatus()
+		if err != nil {
+			return DashboardError{Err: err}
+		}
+		dashboard.Files = files
+
+		for _, f := range files {
+			if f.IsUntracked {
+				dashboard.UntrackedCount++
+			} else if f.IsStaged {
+				dashboard.StagedCount++
+			} else {
+				dashboard.UnstagedCount++
+			}
+		}
+
+		return DashboardLoaded{Dashboard: dashboard}
+	}
+}
+
 func (m MainModel) loadDiff(path string, staged bool) tea.Cmd {
 	return func() tea.Msg {
 		diff, err := m.Git.GetDiff(path, staged)
@@ -300,7 +351,7 @@ func (m MainModel) stageFile(path string) tea.Cmd {
 			return err
 		}
 		m.Files = files
-		m.StatusView.Update(files)
+		m.StatusView = m.StatusView.Update(files)
 		return nil
 	}
 }
@@ -316,7 +367,7 @@ func (m MainModel) unstageFile(path string) tea.Cmd {
 			return err
 		}
 		m.Files = files
-		m.StatusView.Update(files)
+		m.StatusView = m.StatusView.Update(files)
 		return nil
 	}
 }

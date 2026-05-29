@@ -12,4 +12,5 @@ type GitProvider interface {
 	Push() error
 	Pull() error
 	GetCurrentBranch() (string, error)
+	GetBranches() ([]entities.Branch, error)
 }

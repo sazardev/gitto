@@ -227,4 +227,45 @@ func (a *Adapter) GetCurrentBranch() (string, error) {
 	return head.Name().Short(), nil
 }
 
+func (a *Adapter) GetBranches() ([]entities.Branch, error) {
+	head, err := a.repo.Head()
+	if err != nil {
+		return nil, err
+	}
+
+	var branches []entities.Branch
+
+	iter, err := a.repo.Branches()
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	err = iter.ForEach(func(ref *plumbing.Reference) error {
+		name := ref.Name().Short()
+		isHead := ref.Hash() == head.Hash()
+		branches = append(branches, entities.NewBranch(name, isHead, false))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	remoteIter, err := a.repo.References()
+	if err != nil {
+		return branches, nil
+	}
+	defer remoteIter.Close()
+
+	err = remoteIter.ForEach(func(ref *plumbing.Reference) error {
+		if ref.Name().IsRemote() {
+			name := ref.Name().Short()
+			branches = append(branches, entities.NewBranch(name, false, true))
+		}
+		return nil
+	})
+
+	return branches, nil
+}
+
 var _ ports.GitProvider = (*Adapter)(nil)

@@ -40,4 +40,20 @@ var (
 	AccentStyle     = lipgloss.NewStyle().Foreground(Accent)
 	HashStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	TimeStyle       = lipgloss.NewStyle().Foreground(Dim)
+
+	PanelStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(Accent).Padding(0, 1)
+	PanelTitleStyle = lipgloss.NewStyle().Foreground(Accent).Bold(true).Underline(true)
+
+	BranchActiveStyle = lipgloss.NewStyle().Foreground(Success).Bold(true)
+	BranchItemStyle   = lipgloss.NewStyle().Foreground(Foreground)
+	BranchRemoteStyle = lipgloss.NewStyle().Foreground(Dim)
+
+	CommitHashStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	CommitAuthorStyle = lipgloss.NewStyle().Foreground(Dim)
+	CommitTimeStyle   = lipgloss.NewStyle().Foreground(Accent)
+	CommitMsgStyle    = lipgloss.NewStyle().Foreground(Foreground)
+
+	StatStagedStyle   = lipgloss.NewStyle().Foreground(Success).Bold(true)
+	StatUnstagedStyle = lipgloss.NewStyle().Foreground(Warning).Bold(true)
+	StatUntrackedStyle = lipgloss.NewStyle().Foreground(Dim).Bold(true)
 )
