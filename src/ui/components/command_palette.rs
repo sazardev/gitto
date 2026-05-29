@@ -89,12 +89,69 @@ pub fn render_command_palette(state: &AppState, f: &mut Frame, area: Rect) {
     f.set_cursor_position((popup_x + 3 + state.command_input.len() as u16, popup_y + 2));
 }
 
+fn fuzzy_match_score(query: &str, target: &str) -> Option<i32> {
+    let query = query.to_lowercase();
+    let target = target.to_lowercase();
+    let target_chars: Vec<char> = target.chars().collect();
+    let query_chars: Vec<char> = query.chars().collect();
+
+    let mut score = 0i32;
+    let mut qi = 0;
+    let mut prev_match: Option<usize> = None;
+    let mut first_match = true;
+
+    for (ti, &tc) in target_chars.iter().enumerate() {
+        if qi >= query_chars.len() {
+            break;
+        }
+        if tc == query_chars[qi] {
+            if let Some(prev) = prev_match {
+                if ti == prev + 1 {
+                    score += 15;
+                } else {
+                    score += (10i32).saturating_sub((ti - prev) as i32).max(1);
+                }
+            }
+            if first_match {
+                if ti == 0 {
+                    score += 10;
+                } else if target_chars.get(ti - 1).map_or(false, |c| *c == ' ' || *c == '-' || *c == '_') {
+                    score += 8;
+                }
+                first_match = false;
+            }
+            prev_match = Some(ti);
+            qi += 1;
+        }
+    }
+
+    if qi == query_chars.len() {
+        Some(score)
+    } else {
+        None
+    }
+}
+
 fn fuzzy_filter<'a>(query: &str, cmds: &'a [Cmd]) -> Vec<&'a Cmd> {
     if query.is_empty() {
         return cmds.iter().collect();
     }
-    let q = query.to_lowercase();
-    cmds.iter()
-        .filter(|cmd| cmd.name.contains(&q) || cmd.description.to_lowercase().contains(&q))
-        .collect()
+
+    let mut scored: Vec<(&'a Cmd, i32)> = cmds
+        .iter()
+        .filter_map(|cmd| {
+            let name_score = fuzzy_match_score(query, cmd.name).unwrap_or(-1);
+            let desc_score = fuzzy_match_score(query, cmd.description).unwrap_or(-1);
+            let best = name_score.max(desc_score);
+            if best >= 0 {
+                Some((cmd, best))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+    scored.into_iter().map(|(cmd, _)| cmd).collect()
 }

@@ -22,13 +22,16 @@ pub fn render_footer(state: &AppState, f: &mut Frame, area: Rect) {
     let diff_label = keybind::binding_label(&kb.diff_view);
     let back_label = keybind::binding_label(&kb.back);
     let quit_label = keybind::binding_label(&kb.quit);
+    let split_h_label = keybind::binding_label(&kb.toggle_split_horizontal);
+    let split_v_label = keybind::binding_label(&kb.toggle_split_vertical);
+    let zen_label = keybind::binding_label(&kb.toggle_zen);
 
     let mut spans: Vec<Span> = Vec::new();
     spans.push(Span::raw(" "));
 
     match state.view {
         crate::core::state::View::Status => {
-            pair_key(&mut spans, &up_label, &down_label, "Navegar", theme.accent_primary, theme.muted);
+            pair_key(&mut spans, &up_label, &down_label, "Nav", theme.accent_primary, theme.muted);
             single_key(&mut spans, &toggle_label, "Stage", theme.success, theme.muted);
             single_key(&mut spans, &unstage_label, "Unstage", theme.danger, theme.muted);
             single_key(&mut spans, &commit_label, "Commit", theme.accent_primary, theme.muted);
@@ -36,7 +39,7 @@ pub fn render_footer(state: &AppState, f: &mut Frame, area: Rect) {
             single_key(&mut spans, &search_label, "Buscar", theme.accent_primary, theme.muted);
         }
         crate::core::state::View::Log => {
-            pair_key(&mut spans, &up_label, &down_label, "Navegar", theme.accent_primary, theme.muted);
+            pair_key(&mut spans, &up_label, &down_label, "Nav", theme.accent_primary, theme.muted);
             single_key(&mut spans, &diff_label, "Ver diff", theme.accent_primary, theme.muted);
             single_key(&mut spans, &back_label, "Volver", theme.danger, theme.muted);
         }
@@ -47,6 +50,25 @@ pub fn render_footer(state: &AppState, f: &mut Frame, area: Rect) {
     }
 
     spans.push(Span::raw(" "));
+    spans.push(Span::styled("│", theme.muted));
+
+    match state.layout {
+        crate::core::state::Layout::Zen => {
+            single_key(&mut spans, &split_h_label, "Split H", theme.accent_primary, theme.muted);
+            single_key(&mut spans, &split_v_label, "Split V", theme.accent_primary, theme.muted);
+        }
+        crate::core::state::Layout::SplitHorizontal => {
+            single_key(&mut spans, &zen_label, "Zen", theme.success, theme.muted);
+            single_key(&mut spans, &split_v_label, "Split V", theme.accent_primary, theme.muted);
+        }
+        crate::core::state::Layout::SplitVertical => {
+            single_key(&mut spans, &zen_label, "Zen", theme.success, theme.muted);
+            single_key(&mut spans, &split_h_label, "Split H", theme.accent_primary, theme.muted);
+        }
+    }
+
+    spans.push(Span::raw(" "));
+    spans.push(Span::styled("│", theme.muted));
     single_key(&mut spans, &quit_label, "Salir", theme.danger, theme.muted);
 
     let paragraph = Paragraph::new(Line::from(spans))

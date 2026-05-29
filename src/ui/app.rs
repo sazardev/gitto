@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::core::models::FileState;
-use crate::core::state::{AppState, ToastKind, View};
+use crate::core::state::{AppState, ToastKind, View, Layout as AppLayout, Panel};
 use crate::ports::git_provider::GitProvider;
 use crate::ui::{components, keybind, theme::Theme};
 
@@ -149,15 +149,15 @@ impl App {
         };
 
         if !self.state.show_help {
-            match self.state.view {
-                View::Status => {
-                    components::status_view::render_status(&self.state, f, content_area);
+            match self.state.layout {
+                AppLayout::Zen => {
+                    self.render_zen_view(f, content_area, &theme);
                 }
-                View::Log => {
-                    components::log_view::render_log(&self.state, f, content_area);
+                AppLayout::SplitHorizontal => {
+                    self.render_split_horizontal(f, content_area, &theme);
                 }
-                View::Diff => {
-                    components::diff_view::render_diff(&self.state, f, content_area);
+                AppLayout::SplitVertical => {
+                    self.render_split_vertical(f, content_area, &theme);
                 }
             }
         } else {
@@ -190,6 +190,104 @@ impl App {
         components::footer::render_footer(&self.state, f, footer_area);
     }
 
+    fn render_zen_view(&mut self, f: &mut Frame, area: ratatui::layout::Rect, theme: &Theme) {
+        match self.state.view {
+            View::Status => {
+                components::status_view::render_status(&self.state, f, area);
+            }
+            View::Log => {
+                components::log_view::render_log(&self.state, f, area);
+            }
+            View::Diff => {
+                components::diff_view::render_diff(&self.state, f, area);
+            }
+        }
+    }
+
+    fn render_split_horizontal(&mut self, f: &mut Frame, area: ratatui::layout::Rect, _theme: &Theme) {
+        let chunks = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+
+        let view = &self.state.view;
+
+        match *view {
+            View::Status => {
+                if self.state.active_panel == Panel::Left {
+                    components::status_view::render_status(&self.state, f, chunks[0]);
+                    components::flow_view::render_changes_overview(&self.state, f, chunks[1]);
+                } else {
+                    components::flow_view::render_changes_overview(&self.state, f, chunks[0]);
+                    components::status_view::render_status(&self.state, f, chunks[1]);
+                }
+            }
+            View::Log => {
+                if self.state.active_panel == Panel::Left {
+                    components::log_view::render_log(&self.state, f, chunks[0]);
+                    components::flow_view::render_flow(&self.state, f, chunks[1]);
+                } else {
+                    components::flow_view::render_flow(&self.state, f, chunks[0]);
+                    components::log_view::render_log(&self.state, f, chunks[1]);
+                }
+            }
+            View::Diff => {
+                if self.state.active_panel == Panel::Left {
+                    components::diff_view::render_diff(&self.state, f, chunks[0]);
+                    components::diff_view::render_diff(&self.state, f, chunks[1]);
+                } else {
+                    components::diff_view::render_diff(&self.state, f, chunks[0]);
+                    components::diff_view::render_diff(&self.state, f, chunks[1]);
+                }
+            }
+        }
+    }
+
+    fn render_split_vertical(&mut self, f: &mut Frame, area: ratatui::layout::Rect, _theme: &Theme) {
+        let chunks = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(60),
+                Constraint::Percentage(40),
+            ])
+            .split(area);
+
+        let view = &self.state.view;
+
+        match *view {
+            View::Status => {
+                if self.state.active_panel == Panel::Top {
+                    components::status_view::render_status(&self.state, f, chunks[0]);
+                    components::flow_view::render_changes_overview(&self.state, f, chunks[1]);
+                } else {
+                    components::flow_view::render_changes_overview(&self.state, f, chunks[0]);
+                    components::status_view::render_status(&self.state, f, chunks[1]);
+                }
+            }
+            View::Log => {
+                if self.state.active_panel == Panel::Top {
+                    components::log_view::render_log(&self.state, f, chunks[0]);
+                    components::flow_view::render_flow(&self.state, f, chunks[1]);
+                } else {
+                    components::flow_view::render_flow(&self.state, f, chunks[0]);
+                    components::log_view::render_log(&self.state, f, chunks[1]);
+                }
+            }
+            View::Diff => {
+                if self.state.active_panel == Panel::Top {
+                    components::diff_view::render_diff(&self.state, f, chunks[0]);
+                    components::diff_view::render_diff(&self.state, f, chunks[1]);
+                } else {
+                    components::diff_view::render_diff(&self.state, f, chunks[0]);
+                    components::diff_view::render_diff(&self.state, f, chunks[1]);
+                }
+            }
+        }
+    }
+
     fn spawn_async(&mut self, op_name: &str, repo_path: String, f: fn(String) -> anyhow::Result<String>) {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let name = op_name.to_string();
@@ -204,7 +302,7 @@ impl App {
         self.state.loading_message = name;
     }
 
-    fn handle_key(&mut self, key: KeyEvent, git: &impl GitProvider) -> Result<()> {
+fn handle_key(&mut self, key: KeyEvent, git: &impl GitProvider) -> Result<()> {
         if key.code == KeyCode::Char('c') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
             self.state.should_quit = true;
             return Ok(());
@@ -240,6 +338,26 @@ impl App {
             return Ok(());
         }
 
+        if keybind::matches_binding(&key, &self.state.config.keybindings.toggle_split_horizontal) {
+            self.toggle_split_horizontal();
+            return Ok(());
+        }
+
+        if keybind::matches_binding(&key, &self.state.config.keybindings.toggle_split_vertical) {
+            self.toggle_split_vertical();
+            return Ok(());
+        }
+
+        if keybind::matches_binding(&key, &self.state.config.keybindings.toggle_zen) {
+            self.toggle_zen();
+            return Ok(());
+        }
+
+        if keybind::matches_binding(&key, &self.state.config.keybindings.switch_panel) {
+            self.switch_panel();
+            return Ok(());
+        }
+
         if key.code == KeyCode::Tab {
             self.state.show_search = false;
             self.state.search_query.clear();
@@ -260,6 +378,56 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn toggle_split_horizontal(&mut self) {
+        match self.state.layout {
+            AppLayout::SplitHorizontal => {
+                self.state.layout = AppLayout::Zen;
+                self.state.secondary_view = None;
+            }
+            _ => {
+                self.state.layout = AppLayout::SplitHorizontal;
+                self.state.secondary_view = Some(View::Log);
+            }
+        }
+    }
+
+    fn toggle_split_vertical(&mut self) {
+        match self.state.layout {
+            AppLayout::SplitVertical => {
+                self.state.layout = AppLayout::Zen;
+                self.state.secondary_view = None;
+            }
+            _ => {
+                self.state.layout = AppLayout::SplitVertical;
+                self.state.secondary_view = Some(View::Diff);
+            }
+        }
+    }
+
+    fn toggle_zen(&mut self) {
+        self.state.layout = AppLayout::Zen;
+        self.state.secondary_view = None;
+        self.state.active_panel = Panel::Main;
+    }
+
+    fn switch_panel(&mut self) {
+        match self.state.layout {
+            AppLayout::SplitHorizontal => {
+                self.state.active_panel = match self.state.active_panel {
+                    Panel::Left => Panel::Right,
+                    _ => Panel::Left,
+                };
+            }
+            AppLayout::SplitVertical => {
+                self.state.active_panel = match self.state.active_panel {
+                    Panel::Top => Panel::Bottom,
+                    _ => Panel::Top,
+                };
+            }
+            _ => {}
+        }
     }
 
     fn handle_search_input(&mut self, key: KeyEvent) -> Result<()> {
@@ -475,7 +643,7 @@ impl App {
             return Ok(());
         }
 
-        if keybind::matches_binding(&key, &kb.diff_view) || key.code == KeyCode::Enter || key.code == KeyCode::Char('l') {
+        if keybind::matches_binding(&key, &kb.diff_view) || key.code == KeyCode::Enter || keybind::matches_binding(&key, &kb.move_right) {
             if let Some(commit) = self.state.selected_commit() {
                 self.state.diff_content = Some(format!(
                     "commit {}\nAuthor: {}\n\n{}",
@@ -489,7 +657,7 @@ impl App {
 
         if keybind::matches_binding(&key, &kb.back)
             || key.code == KeyCode::Esc
-            || key.code == KeyCode::Char('h')
+            || keybind::matches_binding(&key, &kb.move_left)
         {
             self.state.view = View::Status;
             self.state.selected_index = 0;
@@ -515,7 +683,7 @@ impl App {
 
         if keybind::matches_binding(&key, &kb.back)
             || key.code == KeyCode::Esc
-            || key.code == KeyCode::Char('h')
+            || keybind::matches_binding(&key, &kb.move_left)
             || keybind::matches_binding(&key, &kb.quit)
         {
             self.state.view = View::Status;

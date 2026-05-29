@@ -24,21 +24,48 @@ impl Default for ThemeConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Keybindings {
+    #[serde(default)]
     pub up: String,
+    #[serde(default)]
     pub down: String,
+    #[serde(default)]
     pub toggle_stage: String,
+    #[serde(default)]
     pub stage: String,
+    #[serde(default)]
     pub unstage: String,
+    #[serde(default)]
     pub commit: String,
+    #[serde(default)]
     pub push: String,
+    #[serde(default)]
     pub pull: String,
+    #[serde(default)]
     pub log_view: String,
+    #[serde(default)]
     pub diff_view: String,
+    #[serde(default)]
     pub command_palette: String,
+    #[serde(default)]
     pub search: String,
+    #[serde(default)]
     pub help: String,
+    #[serde(default)]
     pub back: String,
+    #[serde(default)]
+    pub move_left: String,
+    #[serde(default)]
+    pub move_right: String,
+    #[serde(default)]
     pub quit: String,
+    #[serde(default)]
+    pub toggle_split_horizontal: String,
+    #[serde(default)]
+    pub toggle_split_vertical: String,
+    #[serde(default)]
+    pub toggle_zen: String,
+    #[serde(default)]
+    pub switch_panel: String,
 }
 
 impl Default for Keybindings {
@@ -58,7 +85,13 @@ impl Default for Keybindings {
             search: String::from("\\"),
             help: String::from("?"),
             back: String::from("<Esc>"),
+            move_left: String::from("h"),
+            move_right: String::from("l"),
             quit: String::from("q"),
+            toggle_split_horizontal: String::from("Ctrl+H"),
+            toggle_split_vertical: String::from("Ctrl+V"),
+            toggle_zen: String::from("Ctrl+Z"),
+            switch_panel: String::from("Ctrl+W"),
         }
     }
 }

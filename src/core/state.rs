@@ -12,6 +12,22 @@ pub enum View {
     Diff,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Layout {
+    Zen,
+    SplitHorizontal,
+    SplitVertical,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Panel {
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Main,
+}
+
 #[derive(Debug, Clone)]
 pub struct ToastMessage {
     pub kind: ToastKind,
@@ -49,6 +65,38 @@ pub struct AppState {
     pub show_search: bool,
     pub search_query: String,
     pub flash_files: Vec<(String, Instant)>,
+    pub layout: Layout,
+    pub active_panel: Panel,
+    pub secondary_view: Option<View>,
+    pub staging_area: Vec<StagedFile>,
+    pub unstaged_area: Vec<StagedFile>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StagedFile {
+    pub path: String,
+    pub hunks: Vec<DiffHunk>,
+    pub staged: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffHunk {
+    pub header: String,
+    pub lines: Vec<DiffLine>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffLine {
+    pub content: String,
+    pub change_type: ChangeType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangeType {
+    Added,
+    Removed,
+    Context,
+    Header,
 }
 
 impl AppState {
@@ -76,6 +124,11 @@ impl AppState {
             show_search: false,
             search_query: String::new(),
             flash_files: Vec::new(),
+            layout: Layout::Zen,
+            active_panel: Panel::Main,
+            secondary_view: None,
+            staging_area: Vec::new(),
+            unstaged_area: Vec::new(),
         }
     }
 

@@ -8,7 +8,7 @@ pub fn matches_binding(key: &KeyEvent, binding: &str) -> bool {
 
     if binding.to_lowercase().starts_with("ctrl+") && binding.len() >= 6 {
         let ch = binding[5..].chars().next().unwrap();
-        return key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char(ch);
+        return key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char(ch.to_ascii_lowercase());
     }
 
     match binding {
@@ -29,6 +29,7 @@ pub fn matches_binding(key: &KeyEvent, binding: &str) -> bool {
 pub fn binding_label(binding: &str) -> String {
     match binding {
         " " | "Space" => "Espacio".into(),
+        s if s.to_lowercase().starts_with("ctrl+") => format!("Ctrl+{}", s.chars().nth(5).unwrap().to_ascii_uppercase()),
         s => s.to_string(),
     }
 }
