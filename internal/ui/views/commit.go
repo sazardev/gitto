@@ -1,6 +1,8 @@
 package views
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sazardev/gitto/internal/styles"
@@ -13,7 +15,7 @@ type CommitView struct {
 
 func NewCommitView() CommitView {
 	ti := textinput.New()
-	ti.Placeholder = "Commit message..."
+	ti.Placeholder = "commit message..."
 	ti.Focus()
 
 	return CommitView{
@@ -32,15 +34,24 @@ func (v *CommitView) Hide() {
 	v.Input.Reset()
 }
 
-func (v CommitView) Render() string {
+func (v CommitView) Render(width, height int) string {
 	if !v.Visible {
 		return ""
 	}
 
-	s := "\n\n"
-	s += styles.TitleStyle.Render("Commit") + "\n\n"
-	s += v.Input.View() + "\n"
-	s += lipgloss.NewStyle().Foreground(styles.Dim).Render("Press Enter to commit, Esc to cancel")
+	inputWidth := width - 8
+	if inputWidth < 20 {
+		inputWidth = 20
+	}
+	v.Input.Width = inputWidth
 
-	return s
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString(styles.PanelTitleStyle.Render("commit"))
+	sb.WriteString("\n")
+	sb.WriteString(v.Input.View())
+	sb.WriteString("\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.Dim).Render("press enter to commit, esc to cancel"))
+
+	return sb.String()
 }

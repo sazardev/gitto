@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/sazardev/gitto/internal/adapters/fileconfig"
 	"github.com/sazardev/gitto/internal/adapters/gogit"
+	"github.com/sazardev/gitto/internal/adapters/linguist"
 	"github.com/sazardev/gitto/internal/ui"
 )
 
@@ -25,7 +26,9 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	model := ui.NewMainModel(gitAdapter, configAdapter)
+	linguistAdapter := linguist.NewAdapter(repoPath)
+
+	model := ui.NewMainModel(gitAdapter, configAdapter, linguistAdapter)
 
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		log.Fatalf("Failed to run application: %v", err)

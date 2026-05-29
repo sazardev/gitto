@@ -10,15 +10,15 @@ import (
 )
 
 type StatusView struct {
-	Staged     []entities.FileStatus
-	Unstaged   []entities.FileStatus
-	Untracked  []entities.FileStatus
-	Branches   []entities.Branch
-	Commits    []entities.Commit
-	Selected   int
-	Height     int
-	StagedCount   int
-	UnstagedCount int
+	Staged         []entities.FileStatus
+	Unstaged       []entities.FileStatus
+	Untracked      []entities.FileStatus
+	Branches       []entities.Branch
+	Commits        []entities.Commit
+	Selected       int
+	ScrollOffset   int
+	StagedCount    int
+	UnstagedCount  int
 	UntrackedCount int
 }
 
@@ -65,138 +65,213 @@ func (v StatusView) UpdateCommits(commits []entities.Commit) StatusView {
 	return v
 }
 
-func (v StatusView) Render() string {
-	var s strings.Builder
-
-	s.WriteString(v.renderBranchesPanel())
-	s.WriteString("\n")
-	s.WriteString(v.renderCommitsPanel())
-	s.WriteString("\n")
-	s.WriteString(v.renderChangesPanel())
-
-	return s.String()
+func (v StatusView) Render(width, height int) string {
+	if width < 50 {
+		return v.renderNarrow(width, height)
+	}
+	return v.renderWide(width, height)
 }
 
-func (v StatusView) renderBranchesPanel() string {
-	var s strings.Builder
+func (v StatusView) renderWide(width, height int) string {
+	gap := 2
+	leftWidth := (width - gap) * 38 / 100
+	rightWidth := width - leftWidth - gap
 
-	s.WriteString(styles.PanelTitleStyle.Render("Branches"))
-	s.WriteString("\n")
+	leftHeight := height
+	rightHeight := height
+
+	leftCol := lipgloss.JoinVertical(lipgloss.Top,
+		v.renderBranchesPanel(leftWidth, leftHeight*45/100),
+		"\n",
+		v.renderChangesSummary(leftWidth, leftHeight*35/100),
+	)
+
+	rightCol := v.renderCommitsPanel(rightWidth, rightHeight)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftCol, "  ", rightCol)
+}
+
+func (v StatusView) renderNarrow(width, height int) string {
+	branchH := height * 25 / 100
+	commitsH := height * 40 / 100
+	changesH := height - branchH - commitsH - 2
+	if changesH < 3 { changesH = 3 }
+
+	var sb strings.Builder
+	sb.WriteString(v.renderBranchesPanel(width-2, branchH))
+	sb.WriteString("\n")
+	sb.WriteString(v.renderCommitsPanel(width-2, commitsH))
+	sb.WriteString("\n")
+	sb.WriteString(v.renderChangesSummary(width-2, changesH))
+	return sb.String()
+}
+
+func (v StatusView) renderBranchesPanel(panelWidth, maxHeight int) string {
+	title := styles.PanelTitleStyle.Render("branches")
 
 	if len(v.Branches) == 0 {
-		s.WriteString(styles.DimStyle.Render("  No branches"))
-		return s.String()
+		content := title + "\n" + styles.DimStyle.Render("  no branches")
+		return styles.PanelStyle.Width(panelWidth).Render(content)
 	}
 
-	for _, b := range v.Branches {
-		var prefix string
-		var style lipgloss.Style
+	var sb strings.Builder
+	sb.WriteString(title)
+	sb.WriteString("\n")
+
+	visible := maxHeight - 3
+	if visible < 1 { visible = 1 }
+	if visible > len(v.Branches) { visible = len(v.Branches) }
+
+	for i := 0; i < visible; i++ {
+		b := v.Branches[i]
+		prefix := "  "
+		var s lipgloss.Style
 
 		if b.IsHead {
 			prefix = "> "
-			style = styles.BranchActiveStyle
+			s = styles.BranchActiveStyle
 		} else if b.IsRemote {
-			prefix = "  "
-			style = styles.BranchRemoteStyle
+			s = styles.BranchRemoteStyle
 		} else {
-			prefix = "  "
-			style = styles.BranchItemStyle
+			s = styles.BranchItemStyle
 		}
 
-		s.WriteString(prefix + style.Render(b.Name))
-		s.WriteString("\n")
+		name := b.Name
+		maxW := panelWidth - 10
+		if maxW > 0 && len(name) > maxW {
+			name = name[:maxW-3] + "..."
+		}
+
+		sb.WriteString(prefix + s.Render(name))
+		sb.WriteString("\n")
 	}
 
-	return styles.PanelStyle.Render(s.String())
+	if len(v.Branches) > visible {
+		sb.WriteString(styles.DimStyle.Render(fmt.Sprintf("  %d/%d", visible, len(v.Branches))))
+	}
+
+	return styles.PanelStyle.Width(panelWidth).Render(sb.String())
 }
 
-func (v StatusView) renderCommitsPanel() string {
-	var s strings.Builder
-
-	s.WriteString(styles.PanelTitleStyle.Render("Recent Commits"))
-	s.WriteString("\n")
+func (v StatusView) renderCommitsPanel(panelWidth, maxHeight int) string {
+	title := styles.PanelTitleStyle.Render("recent commits")
 
 	if len(v.Commits) == 0 {
-		s.WriteString(styles.DimStyle.Render("  No commits found"))
-		return styles.PanelStyle.Render(s.String())
+		content := title + "\n" + styles.DimStyle.Render("  no commits found")
+		return styles.PanelStyle.Width(panelWidth).Render(content)
 	}
 
-	maxCommits := 6
-	if len(v.Commits) < maxCommits {
-		maxCommits = len(v.Commits)
+	var sb strings.Builder
+	sb.WriteString(title)
+	sb.WriteString("\n")
+
+	visible := maxHeight - 3
+	if visible < 1 { visible = 1 }
+	if visible > len(v.Commits) { visible = len(v.Commits) }
+
+	hashW := 8
+	timeW := 8
+	authorW := 10
+
+	if panelWidth < 55 {
+		authorW = 0
+	}
+	if panelWidth < 45 {
+		timeW = 0
 	}
 
-	for i := 0; i < maxCommits; i++ {
+	msgW := panelWidth - hashW - timeW - authorW - 14
+	if msgW < 10 { msgW = 10 }
+
+	for i := 0; i < visible; i++ {
 		c := v.Commits[i]
-		s.WriteString(styles.CommitHashStyle.Render(c.ShortHash))
-		s.WriteString(" ")
-		s.WriteString(styles.CommitAuthorStyle.Render(truncateStr(c.Author, 12)))
-		s.WriteString(" ")
-		s.WriteString(styles.CommitTimeStyle.Render(formatTime(c.AuthorDate)))
-		s.WriteString("  ")
-		s.WriteString(styles.CommitMsgStyle.Render(truncateStr(c.Message, 35)))
-		s.WriteString("\n")
+		sb.WriteString(styles.CommitHashStyle.Render(truncateStr(c.ShortHash, hashW)))
+		sb.WriteString(" ")
+
+		if authorW > 0 {
+			sb.WriteString(styles.CommitAuthorStyle.Render(truncateStr(c.Author, authorW)))
+			sb.WriteString(" ")
+		}
+
+		if timeW > 0 {
+			sb.WriteString(styles.CommitTimeStyle.Render(truncateStr(formatTime(c.AuthorDate), timeW)))
+			sb.WriteString(" ")
+		}
+
+		sb.WriteString(styles.CommitMsgStyle.Render(truncateStr(c.Message, msgW)))
+		sb.WriteString("\n")
 	}
 
-	return styles.PanelStyle.Render(s.String())
+	if len(v.Commits) > visible {
+		sb.WriteString(styles.DimStyle.Render(fmt.Sprintf("  %d/%d commits", visible, len(v.Commits))))
+	}
+
+	return styles.PanelStyle.Width(panelWidth).Render(sb.String())
 }
 
-func (v StatusView) renderChangesPanel() string {
-	var s strings.Builder
+func (v StatusView) renderChangesSummary(panelWidth, maxHeight int) string {
+	title := styles.PanelTitleStyle.Render("changes")
 
-	s.WriteString(styles.PanelTitleStyle.Render("Changes"))
-	s.WriteString("\n")
-
-	if v.Total() == 0 {
-		s.WriteString(styles.DimStyle.Render("  No changes"))
-		return styles.PanelStyle.Render(s.String())
+	total := v.Total()
+	if total == 0 {
+		content := title + "\n" + styles.DimStyle.Render("  no changes")
+		return styles.PanelStyle.Width(panelWidth).Render(content)
 	}
 
-	statsLine := fmt.Sprintf("%s staged  %s unstaged  %s untracked",
+	var sb strings.Builder
+	sb.WriteString(title)
+	sb.WriteString("\n")
+
+	stats := fmt.Sprintf("%s staged  %s unstaged  %s untracked",
 		styles.StatStagedStyle.Render(fmt.Sprintf("%d", v.StagedCount)),
 		styles.StatUnstagedStyle.Render(fmt.Sprintf("%d", v.UnstagedCount)),
 		styles.StatUntrackedStyle.Render(fmt.Sprintf("%d", v.UntrackedCount)),
 	)
-	s.WriteString(statsLine)
-	s.WriteString("\n\n")
+	sb.WriteString(stats)
 
-	if len(v.Staged) > 0 {
-		s.WriteString(styles.StagedStyle.Render("Staged:"))
-		s.WriteString("\n")
-		for i, f := range v.Staged {
+	visible := maxHeight - 4
+	if visible > 0 && total > 0 {
+		sb.WriteString("\n\n")
+		allFiles := v.getAllFiles()
+		if visible > len(allFiles) {
+			visible = len(allFiles)
+		}
+		for i := 0; i < visible; i++ {
+			f := allFiles[i]
 			prefix := "  "
 			if i == v.Selected {
 				prefix = styles.SelectedStyle.Render("> ")
 			}
-			s.WriteString(prefix + f.Path + "\n")
-		}
-	}
 
-	if len(v.Unstaged) > 0 {
-		s.WriteString(styles.UnstagedStyle.Render("Unstaged:"))
-		s.WriteString("\n")
-		for i, f := range v.Unstaged {
-			prefix := "  "
-			if i+v.LenStaged() == v.Selected {
-				prefix = styles.SelectedStyle.Render("> ")
+			var icon string
+			var s lipgloss.Style
+			if f.IsStaged {
+				icon, s = "+", styles.StagedStyle
+			} else if f.IsUntracked {
+				icon, s = "?", styles.UntrackedStyle
+			} else {
+				icon, s = "~", styles.UnstagedStyle
 			}
-			s.WriteString(prefix + f.Path + "\n")
-		}
-	}
 
-	if len(v.Untracked) > 0 {
-		s.WriteString(styles.UntrackedStyle.Render("Untracked:"))
-		s.WriteString("\n")
-		for i, f := range v.Untracked {
-			prefix := "  "
-			if i+v.LenStaged()+v.LenUnstaged() == v.Selected {
-				prefix = styles.SelectedStyle.Render("> ")
+			path := f.Path
+			maxPW := panelWidth - 12
+			if maxPW > 0 && len(path) > maxPW {
+				path = path[:maxPW-3] + "..."
 			}
-			s.WriteString(prefix + f.Path + "\n")
+
+			sb.WriteString(prefix + s.Render(icon) + " " + path + "\n")
 		}
 	}
 
-	return styles.PanelStyle.Render(s.String())
+	return styles.PanelStyle.Width(panelWidth).Render(sb.String())
+}
+
+func (v StatusView) getAllFiles() []entities.FileStatus {
+	var all []entities.FileStatus
+	all = append(all, v.Staged...)
+	all = append(all, v.Unstaged...)
+	all = append(all, v.Untracked...)
+	return all
 }
 
 func (v StatusView) LenStaged() int    { return len(v.Staged) }
@@ -239,7 +314,13 @@ func (v *StatusView) SelectedFile() *entities.FileStatus {
 }
 
 func truncateStr(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
 	if len(s) > max {
+		if max <= 3 {
+			return s[:max]
+		}
 		return s[:max-3] + "..."
 	}
 	return s

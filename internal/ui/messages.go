@@ -39,3 +39,7 @@ type DashboardLoaded struct {
 type DashboardError struct {
 	Err error
 }
+
+type LanguageDetected struct {
+	Language entities.Language
+}

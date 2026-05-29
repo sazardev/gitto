@@ -1,12 +1,15 @@
 package views
 
 import (
+	"strings"
+
 	"github.com/sazardev/gitto/internal/core/entities"
 	"github.com/sazardev/gitto/internal/styles"
 )
 
 type DiffView struct {
-	Diff *entities.Diff
+	Diff         *entities.Diff
+	ScrollOffset int
 }
 
 func NewDiffView() DiffView {
@@ -17,33 +20,69 @@ func NewDiffView() DiffView {
 
 func (v DiffView) Update(diff *entities.Diff) DiffView {
 	v.Diff = diff
+	v.ScrollOffset = 0
 	return v
 }
 
-func (v DiffView) Render() string {
+func (v DiffView) Render(width, height int) string {
 	if v.Diff == nil {
-		return "No diff available"
+		return styles.DimStyle.Render("  no diff available")
 	}
 
-	var s string
+	title := styles.TitleStyle.Render("diff: " + v.Diff.FilePath)
 
-	s += styles.TitleStyle.Render("Diff: "+v.Diff.FilePath) + "\n\n"
+	usedLines := 2
+	startLine := v.ScrollOffset
+	currentLine := 0
+
+	var sb strings.Builder
+	sb.WriteString(title)
+	sb.WriteString("\n\n")
 
 	for _, hunk := range v.Diff.Hunks {
 		for _, line := range hunk.Lines {
+			if currentLine < startLine {
+				currentLine++
+				continue
+			}
+
+			if usedLines >= height {
+				sb.WriteString("\n")
+				sb.WriteString(styles.DimStyle.Render("  ... scroll with ↑↓"))
+				return sb.String()
+			}
+
+			content := line.Content
+			maxContentWidth := width - 4
+			if maxContentWidth > 0 && len(content) > maxContentWidth {
+				content = content[:maxContentWidth-3] + "..."
+			}
+
 			switch line.Type {
 			case entities.DiffLineAdded:
-				s += styles.DiffAddedStyle.Render("+ " + line.Content)
+				sb.WriteString(styles.DiffAddedStyle.Render("+ " + content))
 			case entities.DiffLineDeleted:
-				s += styles.DiffRemovedStyle.Render("- " + line.Content)
+				sb.WriteString(styles.DiffRemovedStyle.Render("- " + content))
 			case entities.DiffLineHeader:
-				s += styles.AccentStyle.Render(line.Content)
+				sb.WriteString(styles.DiffHeaderStyle.Render(content))
 			default:
-				s += " " + line.Content
+				sb.WriteString(" " + content)
 			}
-			s += "\n"
+			sb.WriteString("\n")
+			usedLines++
+			currentLine++
 		}
 	}
 
-	return s
+	return sb.String()
+}
+
+func (v *DiffView) MoveUp() {
+	if v.ScrollOffset > 0 {
+		v.ScrollOffset--
+	}
+}
+
+func (v *DiffView) MoveDown() {
+	v.ScrollOffset++
 }
