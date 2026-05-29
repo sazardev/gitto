@@ -10,11 +10,7 @@ import (
 )
 
 var (
-	appStyle = lipgloss.NewStyle().
-		Background(Background).
-		Foreground(Foreground).
-		Width(80).
-		Height(24)
+	appStyle = lipgloss.NewStyle()
 
 	headerBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -165,8 +161,8 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleCommitKey(msg)
 	}
 
-	switch {
-	case msg.Type == tea.KeyRunes:
+	switch msg.Type {
+	case tea.KeyRunes:
 		switch msg.String() {
 		case "r":
 			m.ViewMode = StatusViewMode
@@ -194,30 +190,26 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.push()
 		case "p":
 			return m, m.pull()
+		case "q":
+			return m, tea.Quit
 		}
-	case msg.Type == tea.KeyUp:
+	case tea.KeyUp:
 		switch m.ViewMode {
 		case StatusViewMode:
 			m.StatusView.MoveUp()
 		case LogViewMode:
 			m.LogView.MoveUp()
 		}
-		return m, nil
-	case msg.Type == tea.KeyDown:
+	case tea.KeyDown:
 		switch m.ViewMode {
 		case StatusViewMode:
 			m.StatusView.MoveDown()
 		case LogViewMode:
 			m.LogView.MoveDown()
 		}
-		return m, nil
-	case msg.Type == tea.KeyEsc:
+	case tea.KeyEsc:
 		if m.ViewMode != CommitViewMode {
 			m.ViewMode = StatusViewMode
-		}
-	case msg.Type == tea.KeyCtrlC, msg.Type == tea.KeyRunes:
-		if msg.String() == "q" {
-			return m, tea.Quit
 		}
 	}
 

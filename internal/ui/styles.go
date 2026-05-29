@@ -3,19 +3,17 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	Background  = lipgloss.Color("#1a1a2e")
-	Foreground  = lipgloss.Color("#eaeaea")
-	Accent      = lipgloss.Color("#7c3aed")
-	Success     = lipgloss.Color("#22c55e")
-	Warning     = lipgloss.Color("#f59e0b")
-	Error       = lipgloss.Color("#ef4444")
-	DiffAdded   = lipgloss.Color("#22c55e")
-	DiffRemoved = lipgloss.Color("#ef4444")
-	Dim         = lipgloss.Color("#6b7280")
+	Background = lipgloss.Color("") 
+	Foreground = lipgloss.Color("") 
+	Accent     = lipgloss.Color("6") 
+	Success    = lipgloss.Color("2") 
+	Warning    = lipgloss.Color("3") 
+	Error      = lipgloss.Color("1") 
+	DiffAdded  = lipgloss.Color("2") 
+	DiffRemoved = lipgloss.Color("1") 
+	Dim        = lipgloss.Color("8") 
 
-	StatusStyle = lipgloss.NewStyle().
-			Background(Background).
-			Foreground(Foreground)
+	StatusStyle = lipgloss.NewStyle()
 
 	BranchStyle = lipgloss.NewStyle().
 			Foreground(Accent).
@@ -31,8 +29,7 @@ var (
 			Foreground(Dim)
 
 	SelectedStyle = lipgloss.NewStyle().
-			Background(Accent).
-			Foreground(Foreground)
+			Foreground(Accent)
 
 	TitleStyle = lipgloss.NewStyle().
 			Foreground(Accent).
