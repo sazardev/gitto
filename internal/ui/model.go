@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sazardev/gitto/internal/core/entities"
@@ -14,6 +16,7 @@ const (
 	StatusViewMode ViewMode = iota
 	LogViewMode
 	DiffViewMode
+	CommitViewMode
 )
 
 type MainModel struct {
@@ -31,6 +34,7 @@ type MainModel struct {
 	ViewMode      ViewMode
 	Loading       bool
 	Err           error
+	LastMessage   string
 }
 
 func NewMainModel(git ports.GitProvider, config ports.ConfigProvider) MainModel {
@@ -62,28 +66,84 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s, cmd := m.Spinner.Update(msg)
 		m.Spinner = s
 		return m, cmd
+	case CommitSuccess:
+		m.ViewMode = StatusViewMode
+		m.CommitView.Hide()
+		m.Loading = false
+		m.LastMessage = "Commit successful"
+		return m, m.loadStatus()
+	case CommitError:
+		m.Err = msg.Err
+		m.Loading = false
+		m.LastMessage = "Commit failed: " + msg.Err.Error()
+		return m, nil
+	case PushSuccess:
+		m.Loading = false
+		m.LastMessage = "Push successful"
+		return m, m.loadStatus()
+	case PushError:
+		m.Err = msg.Err
+		m.Loading = false
+		m.LastMessage = "Push failed: " + msg.Err.Error()
+		return m, nil
+	case PullSuccess:
+		m.Loading = false
+		m.LastMessage = "Pull successful"
+		return m, m.loadStatus()
+	case PullError:
+		m.Err = msg.Err
+		m.Loading = false
+		m.LastMessage = "Pull failed: " + msg.Err.Error()
+		return m, nil
+	case CloseCommitView:
+		m.ViewMode = StatusViewMode
+		m.CommitView.Hide()
+		return m, nil
+	case LogLoaded:
+		m.LogView.Update(msg.Commits)
+		return m, nil
+	case LogError:
+		m.Err = msg.Err
+		m.LastMessage = "Failed to load log: " + msg.Err.Error()
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m MainModel) View() string {
+	var s strings.Builder
+
 	if m.Loading {
-		return m.Spinner.View() + " Loading..."
+		s.WriteString(m.Spinner.View())
+		s.WriteString(" " + m.LastMessage + "...\n\n")
 	}
 
 	switch m.ViewMode {
 	case StatusViewMode:
-		return m.StatusView.Render()
+		s.WriteString(m.StatusView.Render())
 	case LogViewMode:
-		return m.LogView.Render()
+		s.WriteString(m.LogView.Render())
 	case DiffViewMode:
-		return m.DiffView.Render()
+		s.WriteString(m.DiffView.Render())
+	case CommitViewMode:
+		s.WriteString(m.StatusView.Render())
+		s.WriteString("\n")
+		s.WriteString(m.CommitView.Render())
 	}
 
-	return ""
+	if m.LastMessage != "" {
+		s.WriteString("\n")
+		s.WriteString(m.LastMessage)
+	}
+
+	return s.String()
 }
 
 func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.ViewMode == CommitViewMode {
+		return m.handleCommitKey(msg)
+	}
+
 	switch {
 	case msg.Type == tea.KeyRunes:
 		switch msg.String() {
@@ -96,9 +156,10 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "d":
 			if f := m.StatusView.SelectedFile(); f != nil {
 				m.ViewMode = DiffViewMode
-				return m, m.loadDiff(f.Path)
+				return m, m.loadDiff(f.Path, f.IsStaged)
 			}
 		case "c":
+			m.ViewMode = CommitViewMode
 			m.CommitView.Show()
 		case "s":
 			if f := m.StatusView.SelectedFile(); f != nil {
@@ -113,11 +174,52 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "p":
 			return m, m.pull()
 		}
+	case msg.Type == tea.KeyUp:
+		if m.ViewMode == LogViewMode {
+			m.LogView.MoveUp()
+			return m, nil
+		}
+	case msg.Type == tea.KeyDown:
+		if m.ViewMode == LogViewMode {
+			m.LogView.MoveDown()
+			return m, nil
+		}
 	case msg.Type == tea.KeyEsc:
-		m.ViewMode = StatusViewMode
+		if m.ViewMode != CommitViewMode {
+			m.ViewMode = StatusViewMode
+		}
 	}
 
 	return m, nil
+}
+
+func (m MainModel) handleCommitKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		return m, m.handleCommitSubmit()
+	case tea.KeyEsc:
+		m.ViewMode = StatusViewMode
+		m.CommitView.Hide()
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.CommitView.Input, cmd = m.CommitView.Input.Update(msg)
+	return m, cmd
+}
+
+func (m MainModel) handleCommitSubmit() tea.Cmd {
+	if m.CommitView.Input.Value() == "" {
+		return nil
+	}
+	m.Loading = true
+	return func() tea.Msg {
+		err := m.Git.Commit(m.CommitView.Input.Value())
+		if err != nil {
+			return CommitError{Err: err}
+		}
+		return CommitSuccess{}
+	}
 }
 
 func (m MainModel) loadStatus() tea.Cmd {
@@ -147,20 +249,19 @@ func (m MainModel) loadLog() tea.Cmd {
 	return func() tea.Msg {
 		commits, err := m.Git.GetLog(m.Config.GetMaxLogItems())
 		if err != nil {
-			return err
+			return LogError{Err: err}
 		}
-		m.LogView.Update(commits)
-		return nil
+		return LogLoaded{Commits: commits}
 	}
 }
 
-func (m MainModel) loadDiff(path string) tea.Cmd {
+func (m MainModel) loadDiff(path string, staged bool) tea.Cmd {
 	return func() tea.Msg {
-		diff, err := m.Git.GetDiff(path)
+		diff, err := m.Git.GetDiff(path, staged)
 		if err != nil {
 			return err
 		}
-		m.DiffView.Update(diff, path)
+		m.DiffView.Update(diff)
 		return nil
 	}
 }
@@ -171,7 +272,13 @@ func (m MainModel) stageFile(path string) tea.Cmd {
 		if err != nil {
 			return err
 		}
-		return m.loadStatus()
+		files, err := m.Git.GetStatus()
+		if err != nil {
+			return err
+		}
+		m.Files = files
+		m.StatusView.Update(files)
+		return nil
 	}
 }
 
@@ -181,19 +288,37 @@ func (m MainModel) unstageFile(path string) tea.Cmd {
 		if err != nil {
 			return err
 		}
-		return m.loadStatus()
+		files, err := m.Git.GetStatus()
+		if err != nil {
+			return err
+		}
+		m.Files = files
+		m.StatusView.Update(files)
+		return nil
 	}
 }
 
 func (m MainModel) push() tea.Cmd {
+	m.Loading = true
+	m.LastMessage = "Pushing..."
 	return func() tea.Msg {
-		return m.Git.Push()
+		err := m.Git.Push()
+		if err != nil {
+			return PushError{Err: err}
+		}
+		return PushSuccess{}
 	}
 }
 
 func (m MainModel) pull() tea.Cmd {
+	m.Loading = true
+	m.LastMessage = "Pulling..."
 	return func() tea.Msg {
-		return m.Git.Pull()
+		err := m.Git.Pull()
+		if err != nil {
+			return PullError{Err: err}
+		}
+		return PullSuccess{}
 	}
 }
 

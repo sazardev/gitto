@@ -8,7 +8,7 @@ type GitProvider interface {
 	Unstage(paths []string) error
 	Commit(message string) error
 	GetLog(limit int) ([]entities.Commit, error)
-	GetDiff(path string) (string, error)
+	GetDiff(path string, staged bool) (*entities.Diff, error)
 	Push() error
 	Pull() error
 	GetCurrentBranch() (string, error)

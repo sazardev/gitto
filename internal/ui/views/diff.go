@@ -1,47 +1,47 @@
 package views
 
 import (
-	"strings"
-
+	"github.com/sazardev/gitto/internal/core/entities"
 	"github.com/sazardev/gitto/internal/styles"
 )
 
 type DiffView struct {
-	Content  string
-	FilePath string
-	Lines    []string
+	Diff *entities.Diff
 }
 
 func NewDiffView() DiffView {
 	return DiffView{
-		Content:  "",
-		FilePath: "",
-		Lines:    []string{},
+		Diff: nil,
 	}
 }
 
-func (v DiffView) Update(content, filePath string) DiffView {
-	v.Content = content
-	v.FilePath = filePath
-	v.Lines = strings.Split(content, "\n")
+func (v DiffView) Update(diff *entities.Diff) DiffView {
+	v.Diff = diff
 	return v
 }
 
 func (v DiffView) Render() string {
+	if v.Diff == nil {
+		return "No diff available"
+	}
+
 	var s string
 
-	s += styles.TitleStyle.Render("Diff: "+v.FilePath) + "\n\n"
+	s += styles.TitleStyle.Render("Diff: "+v.Diff.FilePath) + "\n\n"
 
-	for _, line := range v.Lines {
-		switch {
-		case strings.HasPrefix(line, "+"):
-			s += styles.DiffAddedStyle.Render(line) + "\n"
-		case strings.HasPrefix(line, "-"):
-			s += styles.DiffRemovedStyle.Render(line) + "\n"
-		case strings.HasPrefix(line, "@"):
-			s += styles.AccentStyle.Render(line) + "\n"
-		default:
-			s += line + "\n"
+	for _, hunk := range v.Diff.Hunks {
+		for _, line := range hunk.Lines {
+			switch line.Type {
+			case entities.DiffLineAdded:
+				s += styles.DiffAddedStyle.Render("+ " + line.Content)
+			case entities.DiffLineDeleted:
+				s += styles.DiffRemovedStyle.Render("- " + line.Content)
+			case entities.DiffLineHeader:
+				s += styles.AccentStyle.Render(line.Content)
+			default:
+				s += " " + line.Content
+			}
+			s += "\n"
 		}
 	}
 

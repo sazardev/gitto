@@ -32,8 +32,12 @@ var (
 	SpinnerStyle   = lipgloss.NewStyle().Foreground(Accent)
 
 	HelpStyle      = lipgloss.NewStyle().Foreground(Dim)
+	DimStyle       = lipgloss.NewStyle().Foreground(Dim)
+	BoldStyle      = lipgloss.NewStyle().Bold(true)
 
 	DiffAddedStyle  = lipgloss.NewStyle().Foreground(DiffAdded)
 	DiffRemovedStyle = lipgloss.NewStyle().Foreground(DiffRemoved)
 	AccentStyle     = lipgloss.NewStyle().Foreground(Accent)
+	HashStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFB300"))
+	TimeStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#9E9E9E"))
 )

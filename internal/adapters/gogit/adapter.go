@@ -1,6 +1,9 @@
 package gogit
 
 import (
+	"os/exec"
+	"strings"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/sazardev/gitto/internal/core/entities"
@@ -93,16 +96,11 @@ func (a *Adapter) Stage(paths []string) error {
 }
 
 func (a *Adapter) Unstage(paths []string) error {
-	for range paths {
-		err := a.worktree.Reset(&git.ResetOptions{
-			Commit: plumbing.NewHash(""),
-			Mode:   git.MixedReset,
-		})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return a.worktree.Reset(&git.ResetOptions{
+		Commit: plumbing.NewHash(""),
+		Mode:   git.MixedReset,
+		Files:  paths,
+	})
 }
 
 func (a *Adapter) Commit(message string) error {
@@ -143,28 +141,73 @@ func (a *Adapter) GetLog(limit int) ([]entities.Commit, error) {
 	return result, nil
 }
 
-func (a *Adapter) GetDiff(filePath string) (string, error) {
-	head, err := a.repo.Head()
+func (a *Adapter) GetDiff(filePath string, staged bool) (*entities.Diff, error) {
+	result := entities.NewDiff(filePath)
+
+	var cmd *exec.Cmd
+	if staged {
+		cmd = exec.Command("git", "diff", "--cached", "--", filePath)
+	} else {
+		cmd = exec.Command("git", "diff", "--", filePath)
+	}
+	cmd.Dir = a.worktree.Filesystem.Root()
+
+	output, err := cmd.Output()
 	if err != nil {
-		return "", err
+		return &result, nil
 	}
 
-	commit, err := a.repo.CommitObject(head.Hash())
-	if err != nil {
-		return "", err
+	diffStr := string(output)
+	lines := parseDiffOutput(diffStr)
+	if len(lines) == 0 {
+		return &result, nil
 	}
 
-	tree, err := commit.Tree()
-	if err != nil {
-		return "", err
+	result.Hunks = []entities.DiffHunk{{Lines: lines}}
+	return &result, nil
+}
+
+func parseDiffOutput(diffStr string) []entities.DiffLine {
+	var lines []entities.DiffLine
+	diffLines := strings.Split(diffStr, "\n")
+
+	for _, line := range diffLines {
+		if len(line) == 0 {
+			continue
+		}
+
+		var diffLine entities.DiffLine
+		switch {
+		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
+			diffLine = entities.DiffLine{
+				Content: line,
+				Type:    entities.DiffLineHeader,
+			}
+		case strings.HasPrefix(line, "+"):
+			diffLine = entities.DiffLine{
+				Content: line[1:],
+				Type:    entities.DiffLineAdded,
+			}
+		case strings.HasPrefix(line, "-"):
+			diffLine = entities.DiffLine{
+				Content: line[1:],
+				Type:    entities.DiffLineDeleted,
+			}
+		case strings.HasPrefix(line, "@"):
+			diffLine = entities.DiffLine{
+				Content: line,
+				Type:    entities.DiffLineHeader,
+			}
+		default:
+			diffLine = entities.DiffLine{
+				Content: line,
+				Type:    entities.DiffLineContext,
+			}
+		}
+		lines = append(lines, diffLine)
 	}
 
-	file, err := tree.File(filePath)
-	if err != nil {
-		return "", err
-	}
-
-	return file.Contents()
+	return lines
 }
 
 func (a *Adapter) Push() error {
