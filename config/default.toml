@@ -1,0 +1,53 @@
+repo_path = "."
+max_log_items = 50
+
+[keybindings]
+[keybindings.status]
+keys = ["r"]
+label = "Refresh"
+action = "status"
+
+[keybindings.log]
+keys = ["l"]
+label = "Log"
+action = "log"
+
+[keybindings.diff]
+keys = ["d"]
+label = "Diff"
+action = "diff"
+
+[keybindings.commit]
+keys = ["c"]
+label = "Commit"
+action = "commit"
+
+[keybindings.stage]
+keys = ["s"]
+label = "Stage"
+action = "stage"
+
+[keybindings.unstage]
+keys = ["u"]
+label = "Unstage"
+action = "unstage"
+
+[keybindings.push]
+keys = ["P"]
+label = "Push"
+action = "push"
+
+[keybindings.pull]
+keys = ["p"]
+label = "Pull"
+action = "pull"
+
+[theme]
+background = "#1a1a2e"
+foreground = "#eaeaea"
+accent = "#7c3aed"
+success = "#22c55e"
+warning = "#f59e0b"
+error = "#ef4444"
+diff_added = "#22c55e"
+diff_removed = "#ef4444"
