@@ -6,6 +6,8 @@ type GitProvider interface {
 	GetStatus() ([]entities.FileStatus, error)
 	Stage(paths []string) error
 	Unstage(paths []string) error
+	DiscardChange(paths []string) error
+	StageHunk(filePath string, hunkIndex int, staged bool) error
 	Commit(message string) error
 	GetLog(limit int) ([]entities.Commit, error)
 	GetDiff(path string, staged bool) (*entities.Diff, error)

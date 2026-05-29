@@ -103,6 +103,49 @@ func (a *Adapter) Unstage(paths []string) error {
 	})
 }
 
+func (a *Adapter) StageHunk(filePath string, hunkIndex int, staged bool) error {
+	diff, err := a.GetDiff(filePath, staged)
+	if err != nil {
+		return err
+	}
+
+	if hunkIndex < 0 || hunkIndex >= len(diff.Hunks) {
+		return nil
+	}
+
+	hunk := diff.Hunks[hunkIndex]
+	var patch strings.Builder
+	patch.WriteString("diff --git a/" + filePath + " b/" + filePath + "\n")
+	patch.WriteString("--- a/" + filePath + "\n")
+	patch.WriteString("+++ b/" + filePath + "\n")
+
+	for _, raw := range hunk.Raw {
+		patch.WriteString(raw + "\n")
+	}
+
+	var cmd *exec.Cmd
+	if staged {
+		cmd = exec.Command("git", "apply", "--cached", "--quiet")
+	} else {
+		cmd = exec.Command("git", "apply", "--cached", "--quiet")
+	}
+	cmd.Dir = a.worktree.Filesystem.Root()
+	cmd.Stdin = strings.NewReader(patch.String())
+	_, err = cmd.Output()
+	return err
+}
+
+func (a *Adapter) DiscardChange(paths []string) error {
+	for _, path := range paths {
+		cmd := exec.Command("git", "checkout", "--", path)
+		cmd.Dir = a.worktree.Filesystem.Root()
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *Adapter) Commit(message string) error {
 	_, err := a.worktree.Commit(message, &git.CommitOptions{
 		All: true,
@@ -158,56 +201,80 @@ func (a *Adapter) GetDiff(filePath string, staged bool) (*entities.Diff, error) 
 	}
 
 	diffStr := string(output)
-	lines := parseDiffOutput(diffStr)
-	if len(lines) == 0 {
-		return &result, nil
-	}
-
-	result.Hunks = []entities.DiffHunk{{Lines: lines}}
+	hunks := parseDiffHunks(diffStr)
+	result.Hunks = hunks
 	return &result, nil
 }
 
-func parseDiffOutput(diffStr string) []entities.DiffLine {
-	var lines []entities.DiffLine
-	diffLines := strings.Split(diffStr, "\n")
+func parseDiffHunks(diffStr string) []entities.DiffHunk {
+	if diffStr == "" {
+		return nil
+	}
 
-	for _, line := range diffLines {
-		if len(line) == 0 {
+	rawLines := strings.Split(diffStr, "\n")
+	var hunks []entities.DiffHunk
+	var currentLines []entities.DiffLine
+	var currentRaw []string
+
+	for _, rawLine := range rawLines {
+		if strings.HasPrefix(rawLine, "@@") {
+			if currentLines != nil || currentRaw != nil {
+				hunks = append(hunks, entities.DiffHunk{
+					Lines: currentLines,
+					Raw:   currentRaw,
+				})
+			}
+			currentLines = nil
+			currentRaw = nil
+
+			currentLines = append(currentLines, entities.DiffLine{
+				Content: rawLine,
+				Type:    entities.DiffLineHeader,
+			})
+			currentRaw = append(currentRaw, rawLine)
 			continue
 		}
 
+		if len(rawLine) == 0 {
+			continue
+		}
+
+		currentRaw = append(currentRaw, rawLine)
+
 		var diffLine entities.DiffLine
 		switch {
-		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(rawLine, "+++") || strings.HasPrefix(rawLine, "---"):
 			diffLine = entities.DiffLine{
-				Content: line,
+				Content: rawLine,
 				Type:    entities.DiffLineHeader,
 			}
-		case strings.HasPrefix(line, "+"):
+		case strings.HasPrefix(rawLine, "+"):
 			diffLine = entities.DiffLine{
-				Content: line[1:],
+				Content: rawLine[1:],
 				Type:    entities.DiffLineAdded,
 			}
-		case strings.HasPrefix(line, "-"):
+		case strings.HasPrefix(rawLine, "-"):
 			diffLine = entities.DiffLine{
-				Content: line[1:],
+				Content: rawLine[1:],
 				Type:    entities.DiffLineDeleted,
-			}
-		case strings.HasPrefix(line, "@"):
-			diffLine = entities.DiffLine{
-				Content: line,
-				Type:    entities.DiffLineHeader,
 			}
 		default:
 			diffLine = entities.DiffLine{
-				Content: line,
+				Content: rawLine,
 				Type:    entities.DiffLineContext,
 			}
 		}
-		lines = append(lines, diffLine)
+		currentLines = append(currentLines, diffLine)
 	}
 
-	return lines
+	if currentLines != nil || currentRaw != nil {
+		hunks = append(hunks, entities.DiffHunk{
+			Lines: currentLines,
+			Raw:   currentRaw,
+		})
+	}
+
+	return hunks
 }
 
 func (a *Adapter) Push() error {

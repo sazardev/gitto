@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -24,7 +25,7 @@ const (
 	HelpViewMode
 )
 
-var tabNames = []string{"dashboard", "branches", "changes", "history"}
+var tabNames = []string{"status", "branches", "files", "commits"}
 
 type MainModel struct {
 	Git       ports.GitProvider
@@ -147,6 +148,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.HasLanguage = true
 		styles.ApplyAccent(msg.Language.Color)
 		return m, nil
+	case DiffLoaded:
+		m.DiffView = m.DiffView.Update(msg.Diff)
+		return m, nil
+	case DiffError:
+		m.Err = msg.Err
+		m.LastMessage = "failed to load diff: " + msg.Err.Error()
+		return m, nil
 	}
 	return m, nil
 }
@@ -201,7 +209,7 @@ func (m MainModel) View() string {
 }
 
 func (m MainModel) renderHeader(w int) string {
-	branch := styles.BranchActiveStyle.Render(m.CurrentBranch)
+	branch := styles.BranchActiveStyle.Render("git:" + m.CurrentBranch)
 	app := styles.HeaderBorderStyle.Render("gitto")
 
 	var langInfo string
@@ -253,7 +261,33 @@ func (m MainModel) renderStatusBar(w int) string {
 		}
 		return styles.StatusLineStyle.Render(" " + msg)
 	}
-	return styles.StatusLineStyle.Render(" " + m.ViewModeName())
+
+	staged := m.ChangesView.LenStaged()
+	unstaged := m.ChangesView.LenUnstaged()
+	untracked := m.ChangesView.LenUntracked()
+
+	var parts []string
+	if staged > 0 {
+		parts = append(parts, styles.StatStagedStyle.Render(fmt.Sprintf("%d", staged)+"↑"))
+	}
+	if unstaged > 0 {
+		parts = append(parts, styles.StatUnstagedStyle.Render(fmt.Sprintf("%d", unstaged)+"↓"))
+	}
+	if untracked > 0 {
+		parts = append(parts, styles.StatUntrackedStyle.Render(fmt.Sprintf("%d", untracked)+"?"))
+	}
+
+	status := strings.Join(parts, " ")
+	if status == "" {
+		status = styles.DimStyle.Render("clean")
+	}
+
+	viewName := styles.DimStyle.Render(m.ViewModeName())
+	gap := w - lipgloss.Width(status) - lipgloss.Width(viewName) - 4
+	if gap < 1 { gap = 1 }
+	pad := strings.Repeat(" ", gap)
+
+	return status + pad + viewName
 }
 
 func (m MainModel) renderFooter(w int) string {
@@ -264,13 +298,13 @@ func (m MainModel) renderFooter(w int) string {
 func (m MainModel) ViewModeName() string {
 	switch m.ViewMode {
 	case DashboardViewMode:
-		return "dashboard"
+		return "status"
 	case BranchesViewMode:
 		return "branches"
 	case ChangesViewMode:
-		return "changes"
+		return "files"
 	case LogViewMode:
-		return "history"
+		return "commits"
 	case DiffViewMode:
 		return "diff"
 	case CommitViewMode:
@@ -283,16 +317,36 @@ func (m MainModel) ViewModeName() string {
 }
 
 func (m MainModel) getHelpText(w int) string {
-	if w < 50 {
-		return "1-4 tabs  ↑↓ nav  [?] help  [q] quit"
+	switch m.ViewMode {
+	case ChangesViewMode:
+		if w < 50 {
+			return "↑↓ nav  space stage  d discard  ? help  q quit"
+		}
+		return "↑↓ nav  space stage  u unstage  d discard  enter diff  c commit  ? help  q quit"
+	case DiffViewMode:
+		if w < 50 {
+			return "↑↓ scroll  j/k hunk  space stage  esc back"
+		}
+		return "↑↓ scroll  j/k hunk  a line mode  space stage  S stage all  esc back"
+	case BranchesViewMode:
+		if w < 50 {
+			return "↑↓ nav  enter checkout  ? help  q quit"
+		}
+		return "↑↓ nav  enter checkout  ? help  q quit"
+	case LogViewMode:
+		if w < 50 {
+			return "↑↓ nav  ? help  q quit"
+		}
+		return "↑↓ nav  ? help  q quit"
+	default:
+		if w < 50 {
+			return "1-4 tabs  ↑↓ nav  ? help  q quit"
+		}
+		if w < 70 {
+			return "1-4 tabs  ↑↓ nav  space stage  ? help  q quit"
+		}
+		return "1-4 tabs  ↑↓ nav  space stage  u unstage  enter diff  c commit  ? help  q quit"
 	}
-	if w < 70 {
-		return "1-4 tabs  ↑↓ nav  [s] stage  [u] unstage  [?] help  [/] bar  [q] quit"
-	}
-	if w < 100 {
-		return "1-4 tabs  ↑↓ nav  [s] stage  [u] unstage  [d] diff  [c] commit  [?] help  [q] quit"
-	}
-	return "1-4 tabs  ↑↓ nav  [s] stage  [u] unstage  [d] diff  [c] commit  [P] push  [p] pull  [?] help  [q] quit"
 }
 
 func (m MainModel) renderHelpScreen(width, height int) string {
@@ -307,19 +361,24 @@ func (m MainModel) renderHelpScreen(width, height int) string {
 			items: []struct{ key, desc string }{
 				{"1", "dashboard view"},
 				{"2", "branches view"},
-				{"3", "changes view"},
-				{"4", "history view"},
+				{"3", "files view"},
+				{"4", "commits view"},
 				{"tab", "next tab"},
 				{"shift+tab", "previous tab"},
 				{"↑/↓", "move up/down"},
+				{"j/k", "navigate hunks (in diff)"},
+				{"h/l", "prev/next hunk (in diff)"},
 			},
 		},
 		{
 			name: "git operations",
 			items: []struct{ key, desc string }{
-				{"s", "stage selected file"},
+				{"space", "stage selected file/hunk"},
+				{"S", "stage entire file (from diff)"},
 				{"u", "unstage selected file"},
-				{"d", "view diff of selected file"},
+				{"d", "discard unstaged changes / unstage"},
+				{"enter", "view diff of selected file"},
+				{"a", "toggle line mode (in diff)"},
 				{"c", "open commit input"},
 				{"P", "push to remote"},
 				{"p", "pull from remote"},
@@ -387,6 +446,22 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyRunes:
 		switch msg.String() {
+		case " ":
+			if m.ViewMode == ChangesViewMode {
+				if f := m.ChangesView.SelectedFile(); f != nil {
+					if f.IsStaged {
+						return m, m.unstageFile(f.Path)
+					}
+					return m, m.stageFile(f.Path)
+				}
+			} else if m.ViewMode == DiffViewMode && m.DiffView.HasDiff() {
+				return m, m.stageHunk(m.DiffView.FilePath, m.DiffView.SelectedHunkIndex(), m.DiffView.IsStaged)
+			} else if f := m.StatusView.SelectedFile(); f != nil {
+				if f.IsStaged {
+					return m, m.unstageFile(f.Path)
+				}
+				return m, m.stageFile(f.Path)
+			}
 		case "1":
 			m.ViewMode = DashboardViewMode
 			return m, nil
@@ -404,23 +479,71 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "d":
 			if m.ViewMode == ChangesViewMode {
 				if f := m.ChangesView.SelectedFile(); f != nil {
-					m.ViewMode = DiffViewMode
-					return m, m.loadDiff(f.Path, f.IsStaged)
+					if f.IsStaged {
+						return m, m.unstageFile(f.Path)
+					}
+					return m, m.discardChange(f.Path)
 				}
 			} else if f := m.StatusView.SelectedFile(); f != nil {
 				m.ViewMode = DiffViewMode
+				m.DiffView = m.DiffView.SetFile(f.Path, f.IsStaged)
 				return m, m.loadDiff(f.Path, f.IsStaged)
+			}
+		case "enter":
+			if m.ViewMode == ChangesViewMode {
+				if f := m.ChangesView.SelectedFile(); f != nil {
+					m.ViewMode = DiffViewMode
+					m.DiffView = m.DiffView.SetFile(f.Path, f.IsStaged)
+					return m, m.loadDiff(f.Path, f.IsStaged)
+				}
+			} else if m.ViewMode == DashboardViewMode {
+				if f := m.StatusView.SelectedFile(); f != nil {
+					m.ViewMode = DiffViewMode
+					m.DiffView = m.DiffView.SetFile(f.Path, f.IsStaged)
+					return m, m.loadDiff(f.Path, f.IsStaged)
+				}
 			}
 		case "c":
 			m.ViewMode = CommitViewMode
 			m.CommitView.Show()
+		case "j":
+			if m.ViewMode == DiffViewMode {
+				m.DiffView.MoveHunkDown()
+				return m, nil
+			}
+		case "k":
+			if m.ViewMode == DiffViewMode {
+				m.DiffView.MoveHunkUp()
+				return m, nil
+			}
+		case "h":
+			if m.ViewMode == DiffViewMode {
+				m.DiffView.MoveHunkUp()
+				return m, nil
+			}
+		case "l":
+			if m.ViewMode == DiffViewMode {
+				m.DiffView.MoveHunkDown()
+				return m, nil
+			}
+		case "a":
+			if m.ViewMode == DiffViewMode {
+				m.DiffView.ToggleLineMode()
+				return m, nil
+			}
 		case "s":
 			if m.ViewMode == ChangesViewMode {
 				if f := m.ChangesView.SelectedFile(); f != nil {
 					return m, m.stageFile(f.Path)
 				}
+			} else if m.ViewMode == DiffViewMode && m.DiffView.HasDiff() {
+				return m, m.stageHunk(m.DiffView.FilePath, m.DiffView.SelectedHunkIndex(), m.DiffView.IsStaged)
 			} else if f := m.StatusView.SelectedFile(); f != nil {
 				return m, m.stageFile(f.Path)
+			}
+		case "S":
+			if m.ViewMode == DiffViewMode && m.DiffView.HasDiff() {
+				return m, m.stageFile(m.DiffView.FilePath)
 			}
 		case "u":
 			if m.ViewMode == ChangesViewMode {
@@ -465,6 +588,8 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ChangesView.MoveUp()
 		case LogViewMode:
 			m.LogView.MoveUp()
+		case DiffViewMode:
+			m.DiffView.MoveUp()
 		}
 	case tea.KeyDown:
 		switch m.ViewMode {
@@ -476,6 +601,8 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ChangesView.MoveDown()
 		case LogViewMode:
 			m.LogView.MoveDown()
+		case DiffViewMode:
+			m.DiffView.MoveDown()
 		}
 	case tea.KeyEsc:
 		if m.ViewMode == DiffViewMode {
@@ -586,10 +713,9 @@ func (m MainModel) loadDiff(path string, staged bool) tea.Cmd {
 	return func() tea.Msg {
 		diff, err := m.Git.GetDiff(path, staged)
 		if err != nil {
-			return err
+			return DiffError{Err: err}
 		}
-		m.DiffView.Update(diff)
-		return nil
+		return DiffLoaded{Diff: diff}
 	}
 }
 
@@ -603,9 +729,33 @@ func (m MainModel) stageFile(path string) tea.Cmd {
 	}
 }
 
+func (m MainModel) stageHunk(path string, hunkIndex int, staged bool) tea.Cmd {
+	return func() tea.Msg {
+		err := m.Git.StageHunk(path, hunkIndex, staged)
+		if err != nil {
+			return err
+		}
+		diff, err := m.Git.GetDiff(path, staged)
+		if err != nil {
+			return DiffError{Err: err}
+		}
+		return DiffLoaded{Diff: diff}
+	}
+}
+
 func (m MainModel) unstageFile(path string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.Git.Unstage([]string{path})
+		if err != nil {
+			return err
+		}
+		return m.loadDashboard()()
+	}
+}
+
+func (m MainModel) discardChange(path string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.Git.DiscardChange([]string{path})
 		if err != nil {
 			return err
 		}

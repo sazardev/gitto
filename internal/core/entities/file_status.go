@@ -56,3 +56,39 @@ func NewFileStatus(path string) FileStatus {
 		Path: path,
 	}
 }
+
+func (f FileStatus) StatusCode() string {
+	if f.IsUntracked {
+		return "?"
+	}
+	if f.IsStaged {
+		switch f.StagedStatus {
+		case StatusModified:
+			return "M"
+		case StatusAdded:
+			return "A"
+		case StatusDeleted:
+			return "D"
+		case StatusRenamed:
+			return "R"
+		case StatusCopied:
+			return "C"
+		default:
+			return "M"
+		}
+	}
+	switch f.UnstagedStatus {
+	case StatusModified:
+		return "M"
+	case StatusAdded:
+		return "A"
+	case StatusDeleted:
+		return "D"
+	case StatusRenamed:
+		return "R"
+	case StatusCopied:
+		return "C"
+	default:
+		return "M"
+	}
+}

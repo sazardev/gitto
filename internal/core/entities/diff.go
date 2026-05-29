@@ -7,6 +7,7 @@ type DiffHunk struct {
 	NewStart   int
 	NewLines   int
 	Lines      []DiffLine
+	Raw        []string
 }
 
 type DiffLine struct {

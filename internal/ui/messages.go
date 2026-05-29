@@ -43,3 +43,11 @@ type DashboardError struct {
 type LanguageDetected struct {
 	Language entities.Language
 }
+
+type DiffLoaded struct {
+	Diff *entities.Diff
+}
+
+type DiffError struct {
+	Err error
+}

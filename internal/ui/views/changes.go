@@ -59,11 +59,12 @@ func (v ChangesView) Render(width, height int) string {
 }
 
 func (v ChangesView) renderFull(width, height int) string {
-	title := styles.TitleStyle.Render("changes")
+	title := styles.PanelTitleStyle.Render("[3] Files")
 
 	total := v.Total()
 	if total == 0 {
-		return title + "\n\n" + styles.DimStyle.Render("  no changes")
+		content := title + "\n" + styles.DimStyle.Render("  no changes")
+		return styles.PanelStyle.Width(width).Height(height).Render(content)
 	}
 
 	statsLine := fmt.Sprintf("%s staged  %s unstaged  %s untracked",
@@ -97,23 +98,29 @@ func (v ChangesView) renderFull(width, height int) string {
 			prefix = styles.SelectedStyle.Render("> ")
 		}
 
-		var icon string
-		var s lipgloss.Style
-		if f.IsStaged {
-			icon, s = "+", styles.StagedStyle
-		} else if f.IsUntracked {
-			icon, s = "?", styles.UntrackedStyle
-		} else {
-			icon, s = "~", styles.UnstagedStyle
+		code := f.StatusCode()
+		var codeStyle lipgloss.Style
+		switch code {
+		case "A", "C":
+			codeStyle = styles.StagedStyle
+		case "D":
+			codeStyle = styles.DiffRemovedStyle
+		case "?":
+			codeStyle = styles.UntrackedStyle
+		default:
+			codeStyle = styles.UnstagedStyle
 		}
 
 		path := f.Path
-		maxPW := width - 12
+		maxPW := width - 16
 		if maxPW > 0 && len(path) > maxPW {
 			path = path[:maxPW-3] + "..."
 		}
 
-		sb.WriteString(prefix + s.Render(icon) + " " + path + "\n")
+		sb.WriteString(prefix)
+		sb.WriteString(codeStyle.Render(" "+code+" "))
+		sb.WriteString(path)
+		sb.WriteString("\n")
 	}
 
 	if total > availableHeight {
@@ -121,14 +128,11 @@ func (v ChangesView) renderFull(width, height int) string {
 		sb.WriteString(styles.DimStyle.Render(fmt.Sprintf("  %d/%d files", endIdx, total)))
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(styles.HelpStyle.Render("↑↓ navigate • [s] stage • [u] unstage • [d] diff • esc back"))
-
-	return sb.String()
+	return styles.PanelStyle.Width(width).Height(height).Render(sb.String())
 }
 
 func (v ChangesView) renderCompact(width, height int) string {
-	title := styles.TitleStyle.Render("changes")
+	title := styles.PanelTitleStyle.Render("[3] Files")
 
 	s := fmt.Sprintf("%s%s%s",
 		styles.StatStagedStyle.Render(fmt.Sprintf("%ds", v.StagedCount)),

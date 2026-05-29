@@ -35,7 +35,7 @@ func (v LogView) Render(width, height int) string {
 }
 
 func (v LogView) renderFull(width, height int) string {
-	title := styles.TitleStyle.Render("commit history")
+	title := styles.PanelTitleStyle.Render("[4] Commits")
 
 	if len(v.Commits) == 0 {
 		return title + "\n\n" + styles.HelpStyle.Render("  no commits found")
@@ -106,7 +106,7 @@ func (v LogView) renderFull(width, height int) string {
 
 	sb.WriteString(styles.HelpStyle.Render("↑↓ navigate • esc back"))
 
-	return sb.String()
+	return styles.PanelStyle.Width(width).Height(height).Render(sb.String())
 }
 
 func (v LogView) renderCompact(width, height int) string {

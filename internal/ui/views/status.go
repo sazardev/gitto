@@ -107,7 +107,7 @@ func (v StatusView) renderNarrow(width, height int) string {
 }
 
 func (v StatusView) renderBranchesPanel(panelWidth, maxHeight int) string {
-	title := styles.PanelTitleStyle.Render("branches")
+	title := styles.PanelTitleStyle.Render("[1] Status")
 
 	if len(v.Branches) == 0 {
 		content := title + "\n" + styles.DimStyle.Render("  no branches")
@@ -243,23 +243,29 @@ func (v StatusView) renderChangesSummary(panelWidth, maxHeight int) string {
 				prefix = styles.SelectedStyle.Render("> ")
 			}
 
-			var icon string
-			var s lipgloss.Style
-			if f.IsStaged {
-				icon, s = "+", styles.StagedStyle
-			} else if f.IsUntracked {
-				icon, s = "?", styles.UntrackedStyle
-			} else {
-				icon, s = "~", styles.UnstagedStyle
+			code := f.StatusCode()
+			var codeStyle lipgloss.Style
+			switch code {
+			case "A", "C":
+				codeStyle = styles.StagedStyle
+			case "D":
+				codeStyle = styles.DiffRemovedStyle
+			case "?":
+				codeStyle = styles.UntrackedStyle
+			default:
+				codeStyle = styles.UnstagedStyle
 			}
 
 			path := f.Path
-			maxPW := panelWidth - 12
+			maxPW := panelWidth - 14
 			if maxPW > 0 && len(path) > maxPW {
 				path = path[:maxPW-3] + "..."
 			}
 
-			sb.WriteString(prefix + s.Render(icon) + " " + path + "\n")
+			sb.WriteString(prefix)
+			sb.WriteString(codeStyle.Render(" "+code+" "))
+			sb.WriteString(path)
+			sb.WriteString("\n")
 		}
 	}
 

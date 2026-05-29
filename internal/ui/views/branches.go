@@ -35,7 +35,7 @@ func (v BranchesView) Render(width, height int) string {
 }
 
 func (v BranchesView) renderFull(width, height int) string {
-	title := styles.TitleStyle.Render("branches")
+	title := styles.PanelTitleStyle.Render("[2] Branches")
 
 	if len(v.Branches) == 0 {
 		return title + "\n\n" + styles.DimStyle.Render("  no branches found")
@@ -109,7 +109,7 @@ func (v BranchesView) renderFull(width, height int) string {
 	sb.WriteString("\n")
 	sb.WriteString(styles.HelpStyle.Render("↑↓ navigate • enter checkout • esc back"))
 
-	return sb.String()
+	return styles.PanelStyle.Width(width).Height(height).Render(sb.String())
 }
 
 func (v BranchesView) renderCompact(width, height int) string {
