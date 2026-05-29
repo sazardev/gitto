@@ -1,13 +1,31 @@
 package ui
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sazardev/gitto/internal/core/entities"
 	"github.com/sazardev/gitto/internal/ports"
 	"github.com/sazardev/gitto/internal/ui/views"
+)
+
+var (
+	appStyle = lipgloss.NewStyle().
+		Background(Background).
+		Foreground(Foreground).
+		Width(80).
+		Height(24)
+
+	headerBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(Accent).
+				Padding(0, 1)
+
+	helpBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(Dim).
+				Foreground(Dim).
+				Padding(0, 1)
 )
 
 type ViewMode int
@@ -111,32 +129,35 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m MainModel) View() string {
-	var s strings.Builder
+	header := headerBorderStyle.Render("[ gitto ]") + "  " + BranchStyle.Render(m.CurrentBranch) + "\n"
 
+	var viewContent string
 	if m.Loading {
-		s.WriteString(m.Spinner.View())
-		s.WriteString(" " + m.LastMessage + "...\n\n")
+		viewContent = m.Spinner.View() + " " + m.LastMessage + "...\n\n"
 	}
 
 	switch m.ViewMode {
 	case StatusViewMode:
-		s.WriteString(m.StatusView.Render())
+		viewContent += m.StatusView.Render()
 	case LogViewMode:
-		s.WriteString(m.LogView.Render())
+		viewContent += m.LogView.Render()
 	case DiffViewMode:
-		s.WriteString(m.DiffView.Render())
+		viewContent += m.DiffView.Render()
 	case CommitViewMode:
-		s.WriteString(m.StatusView.Render())
-		s.WriteString("\n")
-		s.WriteString(m.CommitView.Render())
+		viewContent += m.StatusView.Render()
+		viewContent += "\n"
+		viewContent += m.CommitView.Render()
 	}
 
-	if m.LastMessage != "" {
-		s.WriteString("\n")
-		s.WriteString(m.LastMessage)
+	if m.LastMessage != "" && !m.Loading {
+		viewContent += "\n"
+		viewContent += m.LastMessage
 	}
 
-	return s.String()
+	help := helpBorderStyle.Render("[r] Refresh  [l] Log  [c] Commit  [d] Diff  [s] Stage  [u] Unstage  [P] Push  [p] Pull  [q] Quit")
+
+	fullView := header + "\n" + viewContent + "\n" + help
+	return appStyle.Render(fullView)
 }
 
 func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -175,18 +196,28 @@ func (m MainModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.pull()
 		}
 	case msg.Type == tea.KeyUp:
-		if m.ViewMode == LogViewMode {
+		switch m.ViewMode {
+		case StatusViewMode:
+			m.StatusView.MoveUp()
+		case LogViewMode:
 			m.LogView.MoveUp()
-			return m, nil
 		}
+		return m, nil
 	case msg.Type == tea.KeyDown:
-		if m.ViewMode == LogViewMode {
+		switch m.ViewMode {
+		case StatusViewMode:
+			m.StatusView.MoveDown()
+		case LogViewMode:
 			m.LogView.MoveDown()
-			return m, nil
 		}
+		return m, nil
 	case msg.Type == tea.KeyEsc:
 		if m.ViewMode != CommitViewMode {
 			m.ViewMode = StatusViewMode
+		}
+	case msg.Type == tea.KeyCtrlC, msg.Type == tea.KeyRunes:
+		if msg.String() == "q" {
+			return m, tea.Quit
 		}
 	}
 
